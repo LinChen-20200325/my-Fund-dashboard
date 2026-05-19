@@ -346,7 +346,7 @@ def _render_compass_card(col, info, title, ticker, fmt='{:.2f}', unit='', show_m
 
 def render_macro_compass():
     """頂部三卡：VIX 恐慌指數 × 美 10Y 殖利率 × S&P 500 vs 60MA。
-    禁用快取：每次頁面渲染都即時抓 yfinance（NAS proxy → Yahoo Chart REST API）。"""
+    走 fetch_macro_compass 5min TTL 快取（macro_repository.py），避免 widget 互動連環打 yfinance。"""
     import datetime as _dt_mc
     try:
         from repositories.macro_repository import fetch_macro_compass as _fmc
@@ -360,7 +360,7 @@ def render_macro_compass():
         '<div style="font-size:14px;font-weight:900;color:#e6edf3;margin:4px 0 4px;">'
         '🧭 總經指南針 (Top-Down Macro)'
         '<span style="font-size:10px;color:#8b949e;font-weight:400;margin-left:8px;">'
-        f'VIX × 10Y × S&amp;P 500 — 即時抓取（無快取）｜更新於 {_fetched_at}</span></div>',
+        f'VIX × 10Y × S&amp;P 500 — 5min TTL 快取｜更新於 {_fetched_at}</span></div>',
         unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns(3)
