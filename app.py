@@ -346,23 +346,44 @@ def _render_compass_card(col, info, title, ticker, fmt='{:.2f}', unit='', show_m
 
 def render_macro_compass():
     """頂部三卡：VIX 恐慌指數 × 美 10Y 殖利率 × S&P 500 vs 60MA。
-    走 fetch_macro_compass 5min TTL 快取（macro_repository.py），避免 widget 互動連環打 yfinance。"""
+    預設不抓資料（避免顯示過時值誤判），按「📡 抓取最新」按鈕才打 yfinance。
+    語意：按鈕當下＝盤面當下＝決策當下真實狀態。"""
     import datetime as _dt_mc
-    try:
-        from repositories.macro_repository import fetch_macro_compass as _fmc
-        data = _fmc()
-    except Exception as e:
-        print(f'[render_macro_compass] fetch failed: {e}')
-        data = {}
-    _fetched_at = _dt_mc.datetime.now().strftime('%H:%M:%S')
 
-    st.markdown(
+    def _do_fetch():
+        try:
+            from repositories.macro_repository import fetch_macro_compass as _fmc
+            _fmc.cache_clear()
+            _data = _fmc()
+        except Exception as e:
+            print(f'[render_macro_compass] fetch failed: {e}')
+            _data = {}
+        st.session_state['_macro_compass_cache'] = {
+            '_ts': _dt_mc.datetime.now(), 'data': _data,
+        }
+
+    _cache = st.session_state.get('_macro_compass_cache')
+    _has_data = bool(_cache and _cache.get('data'))
+    _ts_str = (_cache.get('_ts').strftime('%H:%M:%S')
+               if _has_data and _cache.get('_ts') else '尚未抓取')
+
+    _header = st.columns([6, 1])
+    _header[0].markdown(
         '<div style="font-size:14px;font-weight:900;color:#e6edf3;margin:4px 0 4px;">'
         '🧭 總經指南針 (Top-Down Macro)'
         '<span style="font-size:10px;color:#8b949e;font-weight:400;margin-left:8px;">'
-        f'VIX × 10Y × S&amp;P 500 — 5min TTL 快取｜更新於 {_fetched_at}</span></div>',
+        f'VIX × 10Y × S&amp;P 500 — {"即將抓取（無快取）" if not _has_data else f"更新於 {_ts_str}"}'
+        '</span></div>',
         unsafe_allow_html=True)
+    _header[1].button('📡 抓取最新' if not _has_data else '🔄 重抓',
+                       key='_compass_fetch_btn', on_click=_do_fetch,
+                       use_container_width=True)
 
+    if not _has_data:
+        st.info('💡 點擊右上「📡 抓取最新」按鈕載入即時 VIX / 10Y / S&P 500')
+        return
+
+    data = _cache.get('data') or {}
     c1, c2, c3 = st.columns(3)
     _render_compass_card(c1, data.get('vix'),  'VIX 恐慌指數',     '^VIX',  fmt='{:.2f}')
     _render_compass_card(c2, data.get('tnx'),  '美 10Y 殖利率',    '^TNX',  fmt='{:.2f}', unit='%')
