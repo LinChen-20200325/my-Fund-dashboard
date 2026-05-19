@@ -235,6 +235,7 @@ def render_portfolio_tab() -> None:
                 value=_default_redirect,
                 placeholder="https://你的-app.streamlit.app/",
                 key="wf_oauth_uri",
+                help="必須含 `https://` 開頭與結尾斜線，且要跟 GCP Console「Authorized redirect URIs」一字不差",
             )
 
             _wbc1, _wbc2 = st.columns([1, 3])
@@ -243,11 +244,20 @@ def render_portfolio_tab() -> None:
                             disabled=not (_w_cid.strip() and _w_csec.strip()
                                           and _w_uri.strip()),
                             key="btn_save_custom_oauth"):
+                _ru = _w_uri.strip()
+                # 防呆 1：缺 scheme 自動補 https://
+                if _ru and not (_ru.startswith("http://") or _ru.startswith("https://")):
+                    _ru = "https://" + _ru
+                # 防呆 2：Google OAuth 要求 redirect_uri 完整含 path，常見漏結尾 /
+                if "/" not in _ru[8:]:  # 跳過 https:// 後檢查 path
+                    _ru = _ru + "/"
                 st.session_state["custom_oauth_cfg"] = {
                     "client_id":     _w_cid.strip(),
                     "client_secret": _w_csec.strip(),
-                    "redirect_uri":  _w_uri.strip(),
+                    "redirect_uri":  _ru,
                 }
+                if _ru != _w_uri.strip():
+                    st.info(f"ℹ️ redirect_uri 自動補完為 `{_ru}` — 請確認 GCP Console「Authorized redirect URIs」也是這個字串")
                 st.success("✅ OAuth Client 設定已套用（session 有效），"
                            "可按「🔐 用 Google 登入」")
                 st.rerun()
