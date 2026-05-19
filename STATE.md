@@ -113,12 +113,15 @@
 - fast tests：359 → **460**（+101 新測試）
 - AppTest 互動測試：12 cases（含 3 個 v18.141-143 防退化新增）
 
-### Polish 後續（v18.144，2026-05-18）
+### Polish 後續（v18.144 / v18.145，2026-05-18 / 19）
 - [x] **v18.144** Tab3 T7 抽檔 → `ui/tab3_t7_ledger.py`（1978 行，含 A/B/C 落帳 + 帳本面板 + MK AI 深度建議）
   - `ui/tab3_portfolio.py`：3976 → **2001 行**（−49.7%）
   - `render_t7_section()` 零閉包依賴，全部狀態走 `st.session_state`
   - GEMINI_KEY 函式內部即時取，不靠 caller 注入
   - fast tier 零回歸（456 passed + 4 個 pre-existing 路徑硬編碼 bug 不在本次 scope）
+- [x] **v18.145** 總經指南針 UI 標籤誠實化（PR #3）
+  - `app.py:349/363` 把「即時抓取（無快取）」「禁用快取」改成「**5min TTL 快取**」反映實際 `@_ttl_cache(ttl_sec=300)` 行為
+  - 零行為變更；避免使用者誤以為時間戳代表即時抓取時刻
 
 ---
 
