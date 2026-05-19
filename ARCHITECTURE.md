@@ -61,6 +61,7 @@
 │  Presentation (UI)    — Streamlit only      │  ← 使用者
 │  app.py（425 行）+ ui/tab*.py + ui/components/+ ui/helpers/│
 │   ├─ ui/tab1_macro.py ~ ui/tab6_manual.py   │
+│   ├─ ui/tab3_t7_ledger.py (T7 帳本子模組)   │
 │   ├─ ui/components/macro_card.py            │
 │   ├─ ui/components/macro_card_edu.py        │
 │   ├─ ui/components/mk_dashboard.py          │
