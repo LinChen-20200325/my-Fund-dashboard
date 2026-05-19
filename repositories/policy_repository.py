@@ -625,13 +625,20 @@ def get_sheet_title(client: Any, sheet_id: str) -> str:
         return ""
 
 
-def list_user_sheets(client: Any) -> list[dict]:
+def list_user_sheets(client: Any, folder_id: str = "") -> list[dict]:
     """v18.45：列出使用者 Drive 內所有 Google Sheets。
+
+    Args:
+        client: gspread Client (OAuth)
+        folder_id: 若提供，僅列該資料夾內的 Sheets（gspread 6.x 原生支援）；
+                   留空 = 列全部（向後相容）。
+
     需要 OAuth scope `drive.metadata.readonly`（或 drive.readonly）。
     回傳 [{"id": ..., "name": ...}, ...] 依名稱排序。
     """
     try:
-        files = client.list_spreadsheet_files()
+        files = client.list_spreadsheet_files(
+            folder_id=(folder_id.strip() or None))
     except Exception as e:
         _hint = f"[{type(e).__name__}] {e}" if str(e) else type(e).__name__
         raise PolicySheetError(f"列出 Drive Sheets 失敗：{_hint}") from e
@@ -643,6 +650,43 @@ def list_user_sheets(client: Any) -> list[dict]:
             out.append({"id": _id, "name": _nm})
     out.sort(key=lambda x: x["name"].lower())
     return out
+
+
+def list_user_folders(client: Any) -> list[dict]:
+    """v18.146：列出使用者 Google Drive 內所有資料夾（含共享）。
+
+    走 gspread http_client 打 Drive v3 API（不依賴 googleapiclient）。
+    需要 OAuth scope `drive.metadata.readonly`。
+    回傳 [{"id": ..., "name": ...}, ...] 依名稱排序。
+    """
+    url = "https://www.googleapis.com/drive/v3/files"
+    params = {
+        "q": 'mimeType="application/vnd.google-apps.folder" and trashed=false',
+        "pageSize": 1000,
+        "supportsAllDrives": True,
+        "includeItemsFromAllDrives": True,
+        "fields": "nextPageToken,files(id,name)",
+    }
+    folders: list[dict] = []
+    page_token: str | None = None
+    try:
+        while True:
+            if page_token:
+                params["pageToken"] = page_token
+            resp = client.http_client.request("get", url, params=params)
+            data = resp.json()
+            for f in (data.get("files") or []):
+                _id, _nm = f.get("id"), f.get("name")
+                if _id and _nm:
+                    folders.append({"id": _id, "name": _nm})
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                break
+    except Exception as e:
+        _hint = f"[{type(e).__name__}] {e}" if str(e) else type(e).__name__
+        raise PolicySheetError(f"列出 Drive 資料夾失敗：{_hint}") from e
+    folders.sort(key=lambda x: x["name"].lower())
+    return folders
 
 
 def create_dashboard_sheet(client: Any,

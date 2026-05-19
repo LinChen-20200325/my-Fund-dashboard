@@ -52,6 +52,7 @@ from repositories.policy_repository import (
     get_gspread_client_from_oauth,
     get_sheet_title,
     list_policy_worksheets,
+    list_user_folders,
     list_user_sheets,
     load_all_policy_worksheets,
     load_policies,
@@ -314,9 +315,50 @@ def render_portfolio_tab() -> None:
                         st.error(f"❌ 未預期錯誤：[{type(_ace2).__name__}] {_ace2}")
 
             # v18.45 從 Drive 既有 Sheets 挑（OAuth + Sheet ID 為空 OR 想換）
+            # v18.146 加資料夾下拉過濾（移植自台股 PR #18）
             if _oauth_configured:
                 st.markdown("---")
-                st.caption("📂 **或者** — 從你 Google Drive 內既有的 Sheets 挑一個：")
+                st.caption("📂 **或者** — 從你 Google Drive 內既有的 Sheets 挑一個（可選擇限定資料夾）：")
+
+                # 資料夾下拉：先點按鈕抓所有資料夾，下方 selectbox 篩選 Sheets 列表
+                _fld_btn_c1, _fld_btn_c2 = st.columns([2, 3])
+                if _fld_btn_c1.button("🔄 載入資料夾清單",
+                                       key="btn_load_drive_folders",
+                                       use_container_width=True,
+                                       help="點一次抓 Drive 內所有資料夾；之後下方下拉就能選"):
+                    try:
+                        _client_fl = _get_oauth_client()
+                        _folders_ls = list_user_folders(_client_fl)
+                        st.session_state["_my_folders"] = _folders_ls
+                        if not _folders_ls:
+                            st.info("ℹ️ Drive 內沒有資料夾，或 token 缺 `drive.metadata.readonly` 權限")
+                    except (PolicySheetError, OAuthError) as _fle:
+                        _err_text_f = str(_fle)
+                        if "insufficient" in _err_text_f.lower() or "403" in _err_text_f:
+                            st.error("❌ 列資料夾失敗：OAuth token 缺中繼權限。左 sidebar「🚪 登出」→ 重新登入即可。")
+                        else:
+                            st.error(f"❌ 列資料夾失敗：{_fle}")
+                    except Exception as _fle2:
+                        st.error(f"❌ 未預期錯誤：[{type(_fle2).__name__}] {_fle2}")
+
+                _my_folders = st.session_state.get("_my_folders") or []
+                _folder_options = [("", "🌐 整個帳號（不限資料夾）")] + [
+                    (f["id"], f"📁 {f['name']}  (`{f['id'][:10]}…`)") for f in _my_folders]
+                _cur_folder_id = str(st.session_state.get("_drive_folder_id", "") or "")
+                try:
+                    _cur_fld_idx = next(i for i, (fid, _) in enumerate(_folder_options) if fid == _cur_folder_id)
+                except StopIteration:
+                    _cur_fld_idx = 0
+                _sel_fld_idx = st.selectbox(
+                    "📁 限定資料夾（可選）",
+                    range(len(_folder_options)),
+                    index=_cur_fld_idx,
+                    format_func=lambda i: _folder_options[i][1],
+                    key="sel_drive_folder",
+                    help="留空 = 列整個帳號；或先點「🔄 載入資料夾清單」抓 Drive 資料夾後挑一個")
+                _folder_id = _folder_options[_sel_fld_idx][0]
+                st.session_state["_drive_folder_id"] = _folder_id
+
                 _list_c1, _list_c2 = st.columns([2, 3])
                 if _list_c1.button("📂 從 Drive 列出 Sheets",
                                     key="btn_list_drive_sheets",
@@ -324,8 +366,10 @@ def render_portfolio_tab() -> None:
                                     help="需要 OAuth `drive.metadata.readonly` 權限；若尚未授權請先登出再登入"):
                     try:
                         _client_ls = _get_oauth_client()
-                        _files_ls = list_user_sheets(_client_ls)
+                        _files_ls = list_user_sheets(_client_ls, folder_id=_folder_id)
                         st.session_state["_my_sheets"] = _files_ls
+                        _scope_name = _folder_options[_sel_fld_idx][1].lstrip("📁🌐 ").split("  (")[0]
+                        st.session_state["_my_sheets_scope"] = _scope_name
                         if not _files_ls:
                             st.info("ℹ️ Drive 內沒有 Google Sheets，或目前 token 只能看 app 建立的檔。")
                     except (PolicySheetError, OAuthError) as _lse:
@@ -342,10 +386,12 @@ def render_portfolio_tab() -> None:
                         st.error(f"❌ 未預期錯誤：[{type(_lse2).__name__}] {_lse2}")
 
                 _my_sheets = st.session_state.get("_my_sheets") or []
+                _scope_hint = st.session_state.get("_my_sheets_scope", "")
                 if _my_sheets:
                     _opt_labels = [f"📄 {f['name']}  (`{f['id'][:14]}…`)" for f in _my_sheets]
+                    _scope_label = f"（來源：{_scope_hint}）" if _scope_hint else ""
                     _sel_idx = st.selectbox(
-                        f"清單共 {len(_my_sheets)} 個 Sheets — 選一個",
+                        f"清單共 {len(_my_sheets)} 個 Sheets — 選一個 {_scope_label}",
                         range(len(_opt_labels)),
                         format_func=lambda i: _opt_labels[i],
                         key="sel_my_sheets",
