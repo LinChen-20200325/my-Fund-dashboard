@@ -52,7 +52,16 @@ from services.macro_service import (
     backtest_sub_cycle_lights,
     rank_macro_drivers,
 )
-from ui.helpers.session import is_core_fund as _is_core_fund
+from ui.helpers.session import (
+    calc_data_health as _calc_data_health_pure,
+    is_core_fund as _is_core_fund,
+)
+
+
+def _calc_data_health(indicators=None):
+    """總經資料健康度 wrapper（與 tab3_portfolio.py 同邏輯，供 MK AI 區段使用）。"""
+    ind = indicators if indicators is not None else st.session_state.get("indicators", {})
+    return _calc_data_health_pure(ind)
 
 
 def render_t7_section() -> None:
