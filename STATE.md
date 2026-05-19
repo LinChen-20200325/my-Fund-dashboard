@@ -127,6 +127,16 @@
   - 修法：刪掉 secrets 裡寫死的 URL，讓 `ui/helpers/oauth_state.py` runtime 推導即可
   - 防雷註記寫進 `ARCHITECTURE.md §5.4`：secrets 只放 client_id/client_secret，URL 不入庫
 
+### v18.147 雲端儲存 UX 對齊台股 ETF（2026-05-19）
+- [x] **PR #6** `tab3` 雲端儲存加資料夾下拉過濾（移植自台股 PR #18）
+  - `repositories/policy_repository.py`: `list_user_sheets(folder_id='')` + 新 `list_user_folders()`（走 Drive v3 API）
+  - `ui/tab3_portfolio.py`: 「🔄 載入資料夾清單」按鈕 + 「📁 限定資料夾」selectbox + 清單來源 hint
+- [x] **PR #7** OAuth wizard `redirect_uri` 防呆 — 自動補 `https://` 與結尾 `/`（移植自台股 PR #10）
+- [x] **PR #8** Expander 內部順序對齊標題承諾「Sheet 設定 / 保單清單」
+  - 把第 3 順位的「📊 帳本內容速覽」前移到第 2 順位 + 改名為「📋 保單清單（這本 Sheet 內的保單分頁與輔助 tab）」
+  - 新順序：`Sheet 設定 → 保單清單 → 多帳本管理 → 一鍵存讀 → 本機 JSON 備份`
+  - 純 UI cut-paste；保單 worksheet 多 tab 資料模型完全不動
+
 ---
 
 ## 專案定位

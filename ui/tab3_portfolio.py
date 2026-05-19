@@ -416,6 +416,39 @@ def render_portfolio_tab() -> None:
                         st.success(f"✅ 已選用 `{_picked['name']}` (ID `{_picked['id']}`)")
                         st.rerun()
 
+            # ── v18.147 保單清單（提前到「Sheet 設定」之後，對齊 expander 標題承諾）──
+            # 原為 v18.50「帳本內容速覽」第 3 順位；移至此處讓 expander 內容順序
+            # 「Sheet 設定 → 保單清單 → 多帳本管理 → 一鍵存讀 → 本機備份」
+            # 直接兌現 expander 標題「Sheet 設定 / 保單清單」的字面承諾。
+            if _sheet_id:
+                st.markdown("---")
+                st.markdown("##### 📋 保單清單（這本 Sheet 內的保單分頁與輔助 tab）")
+                st.caption(
+                    "同一張 Sheet 內 **3 種 tab**：保單分頁（基金清單與設定）／"
+                    "`_T7_State`（部位快照）／`_Ledgers`（交易流水）。"
+                    "平時下方各動作（批次加入、T7 套用）會自動同步到對應 tab；"
+                    "若不確定哪個按鈕同步什麼，用下方「🧰 一鍵存讀」。"
+                )
+                _ss_stats = st.session_state.get("_sheet_stats") or {}
+                _sm1, _sm2, _sm3 = st.columns(3)
+                _sm1.metric(
+                    "📋 保單分頁",
+                    _ss_stats.get("tabs", "—"),
+                    help="一張保單 = 一個 tab，放該保單下的基金清單 / 級別 / 幣別"
+                )
+                _sm2.metric(
+                    "📸 _T7_State 部位快照",
+                    _ss_stats.get("t7_state", "—"),
+                    help="T7 持倉的單位數 / 平均成本 / 匯率快照，重啟 app 用此還原"
+                )
+                _sm3.metric(
+                    "📜 _Ledgers 交易流水",
+                    _ss_stats.get("ledgers", "—"),
+                    help="所有 buy / sell / dividend 事件 audit trail（append-only）"
+                )
+                if _ss_stats.get("last_sync"):
+                    st.caption(f"⏱ _T7_State 最後同步：{_ss_stats['last_sync']}")
+
             # ── v18.48 多帳本管理（明顯區塊：建立 / 切換 / 改名）──
             # 用途：不同人 / 帳戶各自一本（例：本人 / 配偶 / 父母 / 退休帳戶）
             if _oauth_configured and _sheet_id:
@@ -540,38 +573,10 @@ def render_portfolio_tab() -> None:
                                 st.success(f"✅ 已切換到「{_target['name']}」")
                                 st.rerun()
 
-            # ── v18.50 帳本內容速覽 + 一鍵存讀（解決「同一筆資料散在三個 tab，
-            #          看不出全貌」的散亂感）──────────────────────────────
+            # ── v18.50 一鍵存讀（解決「同一筆資料散在三個 tab，
+            #          看不出全貌」的散亂感）；v18.147 把「保單清單」前移後此處只剩存讀
             if _sheet_id:
                 st.markdown("---")
-                st.markdown("##### 📊 帳本內容速覽（這本 Sheet 裡有什麼）")
-                st.caption(
-                    "同一張 Sheet 內 **3 種 tab**：保單分頁（基金清單與設定）／"
-                    "`_T7_State`（部位快照）／`_Ledgers`（交易流水）。"
-                    "平時下方各動作（批次加入、T7 套用）會自動同步到對應 tab；"
-                    "若不確定哪個按鈕同步什麼，用這裡的「一鍵存／讀」。"
-                )
-
-                _ss_stats = st.session_state.get("_sheet_stats") or {}
-                _sm1, _sm2, _sm3 = st.columns(3)
-                _sm1.metric(
-                    "📋 保單分頁",
-                    _ss_stats.get("tabs", "—"),
-                    help="一張保單 = 一個 tab，放該保單下的基金清單 / 級別 / 幣別"
-                )
-                _sm2.metric(
-                    "📸 _T7_State 部位快照",
-                    _ss_stats.get("t7_state", "—"),
-                    help="T7 持倉的單位數 / 平均成本 / 匯率快照，重啟 app 用此還原"
-                )
-                _sm3.metric(
-                    "📜 _Ledgers 交易流水",
-                    _ss_stats.get("ledgers", "—"),
-                    help="所有 buy / sell / dividend 事件 audit trail（append-only）"
-                )
-                if _ss_stats.get("last_sync"):
-                    st.caption(f"⏱ _T7_State 最後同步：{_ss_stats['last_sync']}")
-
                 st.markdown("##### 🧰 一鍵存讀（同步整本帳本）")
                 _aa_c1, _aa_c2 = st.columns(2)
                 _dump_all_clicked = _aa_c1.button(

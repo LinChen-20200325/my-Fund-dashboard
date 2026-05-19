@@ -731,6 +731,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > ⚠️ **環境遷移防雷（v18.146 / 2026-05-19）**：OAuth client 區段**不可**寫死 `redirect_uri = "https://<舊子網域>.streamlit.app/"`。Streamlit Cloud 重建 / 換倉 / 遷移會分配新的 hash 子網域，硬編碼會造成 `redirect_uri_mismatch`。請讓 `ui/helpers/oauth_state.py` 用 runtime URL 推導，secrets 只填 `client_id` / `client_secret`。同步 GCP Console 「已授權的重新導向 URI」白名單需含現役 streamlit.app URL（含結尾斜線）。
 
+> 🆕 **v18.147 / 2026-05-19** — Tab3 expander「📋 保單管理（Google Sheets）」內部順序對齊標題承諾：`Sheet 設定 → 保單清單 → 多帳本管理 → 一鍵存讀 → 本機 JSON 備份`。新增 `list_user_folders()` 走 Drive v3 API（`client.http_client.request('get', ...)` 不依賴 googleapiclient），`list_user_sheets()` 加 `folder_id=''` kwarg（gspread 6.x 原生支援）。OAuth wizard 加 redirect_uri 自動正規化（缺 scheme 補 `https://`、缺 path 補 `/`）。
+
 ---
 
 ## §6 Session State Schema（v10.0）
