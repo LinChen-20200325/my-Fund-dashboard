@@ -246,6 +246,16 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.158 hotfix — 策略3 智能戰情室判斷修正（2026-05-20）
+
+- [x] **問題（1）「成立 > 3 年」近似太脆弱** 原以 `ret_3y` 是否存在近似，但 `_ret(756)` 要 NAV series ≥ 756 點才回值；低頻 NAV（週/雙週/月線）即使基金成立 5+ 年也回 None → 3-3-3 第一條誤判
+  - **修法** 加 `_fund_age_years(series)` helper，從 `series.index[0]` 算實際年資；跨 3+ 年即使只 12 點月線資料也能正確判斷
+- [x] **問題（2）3-3-3 三層計數讓人誤解** 原顯示「有 3Y 數據 / 年化>7% / 波動優於中位」是各自獨立通過率，看似矛盾（例：「有 3Y 數據 0 但波動優於中位 3」）
+  - **修法** 改 cascade「① 成立 ≥ 3 年 → ② ① + 年化 > 7% → ③ ② + 波動優於中位」三層遞減 + 每層 delta 顯示「卡關幾檔」，user 一眼看出哪層卡關
+- [x] **問題（3）撿便宜 / 警示 / 停利籃子全 0 無提示** 三標籤（Price_Zone / Health_Check / Principal_Erosion）全 N/A（metrics 缺欄）或全 Hold/Healthy 都會造成全 0，畫面卻沒提示
+  - **修法** 新增 `_render_buckets_diagnostic()` — 偵測三籃子全 0 時自動掛 expander，列出每檔基金的三標籤值；user 展開即知是「N/A 數據缺」還是「真的全健康」
+- [x] **驗證** 新增 `test_mk_dashboard.py` 5 個 case 測 `_fund_age_years`；全套 fast tier **519 passed**（+5 新）零回歸
+
 ---
 
 ## 專案定位
