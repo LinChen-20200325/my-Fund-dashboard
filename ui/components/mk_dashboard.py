@@ -126,6 +126,25 @@ def tag_principal_erosion(fund: dict) -> str:
         return "N/A"
 
 
+def _fund_age_years(series) -> Optional[float]:
+    """v18.158：從 NAV series 算實際成立年資（NAV 起始日 → 今天，單位：年）。
+
+    取代「以 ret_3y 存在性近似 3 年」的舊判斷 — `_ret(756)` 需 series ≥ 756 點，
+    對低頻 NAV（週/雙週/月線）即使基金成立 5+ 年也回 None，造成 3-3-3 第一條誤判。
+    """
+    if series is None or not hasattr(series, "index"):
+        return None
+    try:
+        s = series.dropna()
+        if len(s) == 0:
+            return None
+        first = pd.to_datetime(s.index[0])
+        now = pd.Timestamp.now(tz=first.tz) if first.tzinfo else pd.Timestamp.now()
+        return float((now - first).days / 365.25)
+    except (TypeError, ValueError, IndexError, AttributeError):
+        return None
+
+
 def _quarter_rets_from_series(s) -> Optional[tuple]:
     """從 NAV series 取得「最近兩季」報酬 (q1=近 65d, q2=前一季 65~130d)。"""
     if s is None or not hasattr(s, "dropna"):
@@ -250,6 +269,7 @@ def build_mk_dataframe(portfolio_funds: list, bench_series=None) -> pd.DataFrame
             # 隱藏欄（給篩選用）
             "_std_1y": _safe_float(m.get("std_1y")),
             "_ret_3y": _safe_float(m.get("ret_3y")),
+            "_age_years": _fund_age_years(f.get("series")),  # v18.158
         })
     return pd.DataFrame(rows)
 
@@ -355,6 +375,34 @@ def _render_kpi_cards(df: pd.DataFrame) -> None:
     c4.metric("⚖️ 配置比例", ratio_label, delta=delta_str,
               delta_color="off",
               help="策略3 建議核心 80% / 衛星 20%；偏離過大代表結構失衡")
+
+
+def _render_buckets_diagnostic(df: pd.DataFrame) -> None:
+    """v18.158：當「撿便宜雷達 / 留校查看警示 / 停利提醒」三籃子全為 0 時，
+    加 expander 列出每檔 fund 的三標籤 (Price_Zone / Health_Check / Principal_Erosion)，
+    讓 user 一眼看出是「metrics 缺欄 → 標籤 N/A」還是「組合確實全 Hold/Healthy」。
+    """
+    if df.empty:
+        return
+    n_buy = int(df["Price_Zone"].isin(["Buy_Zone", "Buy_Zone_Deep"]).sum())
+    n_warn = int(df["Health_Check"].isin(["Sharpe_Warning", "Warning", "Weak"]).sum())
+    n_warn += int(((df["MK_Class"] == "Core") &
+                   (df["Principal_Erosion"] == "Eroding")).sum())
+    n_take = int(((df["Price_Zone"] == "Take_Profit") &
+                  (df["MK_Class"] == "Satellite")).sum())
+    if max(n_buy, n_warn, n_take) > 0:
+        return   # 至少一籃子有命中 → 不必展開診斷
+
+    with st.expander("🔍 三籃子都 0？展開查每檔基金標籤", expanded=False):
+        st.caption(
+            "三籃子計數來自三標籤：`Price_Zone` / `Health_Check` / `Principal_Erosion`。\n"
+            "若大量 `N/A` → metrics 缺欄位（buy1/buy2/bb_upper/sharpe/series 等）；\n"
+            "若全 `Hold` + `Healthy` → 組合確實沒進場 / 停利 / 警示訊號。"
+        )
+        cols_show = ["代碼", "標的名稱", "MK_Class",
+                     "Price_Zone", "Health_Check", "Principal_Erosion"]
+        avail = [c for c in cols_show if c in df.columns]
+        st.dataframe(df[avail], hide_index=True, use_container_width=True)
 
 
 def _style_core(df: pd.DataFrame):
@@ -578,32 +626,44 @@ def _render_333_tab(df: pd.DataFrame) -> None:
 
     原規格：成立>3年、年化>7%、同類前 1/3。
     變通：第三項改為「組合內 std_1y < 中位」（既有資料無同類排名 API）。
+
+    v18.158：① 改用 NAV index[0] 推算實際成立年資（取代脆弱的 ret_3y 存在性近似）；
+    ② 三層計數改 cascade（① → ①∩② → ①∩②∩③），讓 user 一眼看出卡哪層。
     """
     with st.expander("💡 策略3 白話文：這頁怎麼看？", expanded=False):
         st.markdown(
             "**舊標的變差想換股？依 3-3-3 法則挑：**\n\n"
-            "1. **成立 > 3 年**：以「有 3 年期報酬數據」近似（實際成立日尚未抓取，下個版本接 API）。\n"
+            "1. **成立 ≥ 3 年**：以 NAV 起始日推算實際年資（v18.158 起改正：原以 ret_3y 存在性近似，低頻 NAV 會誤判）。\n"
             "2. **年化報酬 > 7%**：以近一年含息總報酬替代。\n"
             "3. **同類排名前 1/3**：暫以「組合內波動率優於中位」變通（待 Lipper / Morningstar API 接通後正式啟用）。\n\n"
-            "符合下列三條者列為 **候選清單**。"
+            "三層採 cascade（過 ① 才看 ②，過 ② 才看 ③），同時符合者列為 **候選清單**。"
         )
     if df.empty:
         st.info("尚無資料可篩選。")
         return
 
-    has_3y = df["_ret_3y"].notna()
+    age_pass = df["_age_years"].fillna(0) >= 3.0
     ret_pass = df["含息總報酬(1Y%)"].fillna(-999) > 7.0
-    std_series = df["_std_1y"].dropna()
-    std_median = float(std_series.median()) if not std_series.empty else None
-    std_pass = (df["_std_1y"].fillna(99999) < std_median) if std_median is not None else pd.Series([False] * len(df))
+    # std 中位數取「全部有 std」的 pool，不卡 cascade（讓基準穩定）
+    std_pool = df["_std_1y"].dropna()
+    std_median = float(std_pool.median()) if not std_pool.empty else None
+    std_pass = (df["_std_1y"].fillna(99999) < std_median) if std_median is not None \
+               else pd.Series([False] * len(df), index=df.index)
 
-    cand = df[has_3y & ret_pass & std_pass].copy()
+    n_age = int(age_pass.sum())
+    n_ret_in_age = int((age_pass & ret_pass).sum())
+    n_all = int((age_pass & ret_pass & std_pass).sum())
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("有 3Y 數據", int(has_3y.sum()))
-    c2.metric("年化 > 7%", int(ret_pass.sum()))
-    c3.metric("波動優於中位", int(std_pass.sum()))
+    c1.metric("① 成立 ≥ 3 年", f"{n_age} 檔")
+    c2.metric("② ① + 年化 > 7%", f"{n_ret_in_age} 檔",
+              delta=f"−{n_age - n_ret_in_age} 卡關" if n_age > n_ret_in_age else None,
+              delta_color="off")
+    c3.metric("③ ② + 波動優於中位", f"{n_all} 檔",
+              delta=f"−{n_ret_in_age - n_all} 卡關" if n_ret_in_age > n_all else None,
+              delta_color="off")
 
+    cand = df[age_pass & ret_pass & std_pass].copy()
     if cand.empty:
         st.warning("目前組合內無同時符合三條件的標的。可考慮加入更多候選後再篩選。")
         return
@@ -666,6 +726,7 @@ def render_mk_war_room(portfolio_funds: Optional[list] = None) -> None:
         return
 
     _render_kpi_cards(df)
+    _render_buckets_diagnostic(df)   # v18.158：三籃子全 0 時自動展開診斷
     st.divider()
 
     sub1, sub2, sub3 = st.tabs([
