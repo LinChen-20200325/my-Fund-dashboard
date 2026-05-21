@@ -153,6 +153,31 @@ def render_portfolio_tab() -> None:
     _pf_for_warroom = [f for f in st.session_state.portfolio_funds
                        if f.get("loaded") and not f.get("load_error")]
     if _pf_for_warroom:
+        # v18.163：頂部統一 hero KPI（合併 mk_war_room 4 卡 + 配息矩陣 4 卡，
+        # 解決 user 反饋「上下兩段 KPI 重複占版面」）。
+        from ui.helpers.portfolio_health import (
+            compute_health_kpis,
+            render_hero_kpi_cards,
+        )
+        try:
+            from ui.components.mk_dashboard import build_mk_dataframe as _build_mk
+            _loaded_hero = [f for f in _pf_for_warroom
+                             if f.get("loaded") and not f.get("load_error")]
+            _mk_df_hero = _build_mk(_loaded_hero, bench_series=None)
+        except Exception:
+            _mk_df_hero = None   # noqa: smoke-allow-pass — KPI 不影響後續功能
+        _kpis_hero = compute_health_kpis(_pf_for_warroom, _mk_df_hero)
+        st.session_state["_t3_kpis_hero"] = _kpis_hero   # 供下方 expander summary 用
+        st.markdown(
+            "<div style='background:linear-gradient(135deg,#1a2845,#0d1b2a);"
+            "border-left:4px solid #64b5f6;border-radius:8px;padding:10px 14px;margin:8px 0'>"
+            "<span style='color:#64b5f6;font-size:15px;font-weight:900'>📊 組合健康儀表</span>"
+            "<span style='color:#888;font-size:11px;margin-left:8px'>v18.163 6 指標一覽</span>"
+            "</div>",
+            unsafe_allow_html=True)
+        render_hero_kpi_cards(_kpis_hero)
+        st.divider()
+
         # v18.14: 改用 markdown 章節（避免外層 expander 包住內部 expander 觸發 Streamlit 巢狀錯誤）
         st.markdown(
             "<div style='background:linear-gradient(135deg,#1a2845,#0d1b2a);"
@@ -2119,20 +2144,8 @@ def render_portfolio_tab() -> None:
                     bargap=0.35, hovermode="x unified")
                 st.plotly_chart(fig_rc, use_container_width=True)
 
-                # v18.48 吃本金統計摘要：排除「1Y 資料不足」的基金
-                _eat_n = sum(1 for r, d, real in zip(_rc_ret, _rc_div, _rc_real)
-                             if real and d > 0 and r < d)
-                _na_n  = sum(1 for real in _rc_real if not real)
-                _ok_n  = len(_rc_names) - _eat_n - _na_n
-                _sc1, _sc2, _sc3, _sc4 = st.columns(4)
-                _sc1.metric("組合基金數", len(_rc_names))
-                _sc2.metric("✅ 現金流健康", _ok_n)
-                _sc3.metric("🔴 吃本金警示", _eat_n,
-                            delta=f"-{_eat_n} 檔需檢視" if _eat_n else None,
-                            delta_color="inverse")
-                _sc4.metric("⬜ 1Y 資料不足", _na_n,
-                            help="這些基金的 1Y 含息報酬無法從 metrics / perf / NAV 任一來源取得，"
-                                 "暫不納入吃本金判定（避免誤判）")
+                # v18.163：下方 4 卡 KPI 已移除（與 Tab3 頂部 hero KPI 重複）；
+                # 詳細數字在 hero「💵 現金流安全」/「🔴 留校查看」見。
 
 
     # ─── 以下為原 with tab3: 第二段 (T5/T6/T7) ───────────────

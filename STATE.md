@@ -246,6 +246,23 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.163 — Tab3 KPI 合併 hero + sub-tab 改 segmented_control（消除上下兩段重複占版面）（2026-05-21）
+
+- [x] **問題場景**（user 截圖兩張）：Tab3 上下兩段 KPI 重複（上方 mk_war_room 4 卡 + 下方真實收益矩陣 4 卡）；三個 sub-tab（核心戰情室/波段觀測站/3-3-3 篩選器）視覺上像「同一份基金清單顯示三次」
+- [x] **抽 helper** `ui/helpers/portfolio_health.py` 純函式
+  - `compute_health_kpis(portfolio_funds, mk_df=None) -> dict`：合併 MK 標籤（撿便宜/留校/停利/配置比）+ 現金流（基金數/健康/吃本金/資料不足）共 12 個 field
+  - `render_hero_kpi_cards(kpis)`：6 卡 hero（基金數 / 配置比 / 現金流安全 N/M / 撿便宜 / 留校 / 停利），把 `n_eat` 收進「現金流安全」的 `delta` inverse、`n_na` 進 tooltip
+- [x] **Tab3 頂部加 hero KPI** `ui/tab3_portfolio.py:155+`，在 `render_mk_war_room` 之上；session_state 存 `_t3_kpis_hero` 供下方共用
+- [x] **`mk_dashboard.py:728-743` 重構**：
+  - 移除 `_render_kpi_cards(df)` 呼叫（hero 已涵蓋）
+  - `st.tabs` 3 sub-tab → `st.segmented_control`（基金池大小寫進選項 label：`🛡️ 核心戰情室（N 檔）`）
+  - 內容渲染邏輯一字不動，只換切換器
+- [x] **`tab3_portfolio.py:2148-2160` 移除下方重複 4 卡 KPI**（hero 已涵蓋同樣資訊）
+- [x] **T5 重疊矩陣不動** — 已是 per-policy `st.expander(expanded=False)` 收合（`tab3_portfolio.py:2195`）
+- [x] **新測試** `test_portfolio_health.py` 9 cases：空輸入 / None / dedup by code / MK 標籤 / 80/20 落差 / 80/20 符合 / 吃本金邏輯 / 1Y 資料不足 / 無 mk_df 只算現金流
+- [x] **驗證** fast tier `pytest -m "not slow"` **565 passed**（v18.162 baseline 556 + 9 新增），零回歸
+- [x] **CLAUDE.md §3 三步法**：Explore agent 並行查重複度（KPI 中互補 / sub-tab 高 / 衛星 vs 配息矩陣低）→ Plan 3 句獲准 → Execute
+
 ### v18.162 — Tab3 快捷面板雲端動作改真執行 + 抽 cloud_io helper（2026-05-21）
 
 - [x] **問題場景**（user 截圖三張）：v18.161 快捷面板的 📥/📦 panel 只是「狀態 + 請往下捲」提示牌，與 toast 等價；且「目前帳本」誤讀 `active_policy_id`（保單）而非 `policy_sheet_id`（帳本），顯示「(未選定)」與實際不符
