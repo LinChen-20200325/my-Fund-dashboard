@@ -725,19 +725,28 @@ def render_mk_war_room(portfolio_funds: Optional[list] = None) -> None:
         st.info("組合資料正在準備中。")
         return
 
-    _render_kpi_cards(df)
     _render_buckets_diagnostic(df)   # v18.158：三籃子全 0 時自動展開診斷
     st.divider()
 
-    sub1, sub2, sub3 = st.tabs([
-        "🛡️ 核心戰情室（以息養股）",
-        "⚡ 波段觀測站（衛星資產）",
-        "🔍 3-3-3 篩選器",
-    ])
-    with sub1:
+    # v18.163：sub-tab 改用 segmented_control（解決 user「三個 tab 內容看起來
+    # 一樣」的困惑）— 共用基金資料池，按鈕切換視角，下方一張表依選項換欄位/排序/標題。
+    # KPI 卡片已上移到 Tab3 頂部 hero（避免上下兩段重複 KPI）。
+    _view_options = [
+        f"🛡️ 核心戰情室（{int((df['MK_Class'] == 'Core').sum())} 檔）",
+        f"⚡ 波段觀測站（{int((df['MK_Class'] == 'Satellite').sum())} 檔）",
+        f"🔍 3-3-3 篩選器（{len(df)} 檔池）",
+    ]
+    _view_pick = st.segmented_control(
+        "選擇分析視角",
+        _view_options,
+        default=_view_options[0],
+        key="mk_view_pick",
+        help="三個視角共用同一份基金池：核心/衛星按 MK_Class 篩選；3-3-3 篩 3 年資 + 年化報酬 + 標準差。",
+    )
+    if _view_pick == _view_options[0]:
         _render_core_tab(df)
-    with sub2:
+    elif _view_pick == _view_options[1]:
         _render_satellite_tab(df, portfolio_funds=loaded,
                               bench_series=bench_series, bench_ticker=bench_ticker)
-    with sub3:
+    else:
         _render_333_tab(df)

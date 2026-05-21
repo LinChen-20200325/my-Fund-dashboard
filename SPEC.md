@@ -375,6 +375,61 @@ restore_from_json_bytes(raw, ss) -> {ok, n_funds, n_ledgers, error}
 
 ---
 
+---
+
+### §3-F Tab3 組合健康儀表 hero + sub-tab segmented_control（v18.163 新增）
+
+**問題場景**：user 截圖反饋「上面資料跟下方有差異 是否保留一個 另外有很多重複資料 很占版面」。Tab3 內：
+- 上方 `mk_war_room` 4 卡 KPI（撿便宜 / 留校 / 停利 / 配置比）
+- 下方真實收益矩陣 4 卡 KPI（基金數 / 現金流健康 / 吃本金 / 資料不足）
+- 三個 sub-tab（核心戰情室 / 波段觀測站 / 3-3-3 篩選器）視覺上像「同一份基金清單顯示三次」
+
+**設計**：合併兩段 KPI 成 Tab3 頂部 hero 6 卡 + sub-tab 改用按鈕組切換。
+
+**6 卡 hero KPI**（`ui/helpers/portfolio_health.py:render_hero_kpi_cards`）：
+
+| 卡片 | 顯示 | 來源 |
+|------|------|------|
+| 📊 組合基金數 | `N 檔` | `portfolio_funds` 去重後 |
+| ⚖️ 配置比例 | `核心 X% / 衛星 Y%` + delta vs 80/20 | `mk_df.MK_Class` |
+| 💵 現金流安全 | `健康/(健康+吃本金) 檔` + delta `-N 吃本金` inverse + tooltip `N 檔資料不足` | `compute_1y_total_return` |
+| 🟢 撿便宜雷達 | `N 檔` | `mk_df.Price_Zone == Buy_Zone*` |
+| 🔴 留校查看 | `N 檔` + delta inverse | `mk_df.Health_Check + Core 吃本金` |
+| 💰 停利提醒 | `N 檔` | `mk_df.Price_Zone == Take_Profit & Satellite` |
+
+**KPI helper 介面**：
+
+```python
+# ui/helpers/portfolio_health.py
+compute_health_kpis(portfolio_funds, mk_df=None) -> dict
+# 12 個 field：n_classed / pct_core / pct_sat / ratio_label / ratio_delta /
+#             n_buy / n_warn / n_take / n_funds / n_cash_ok / n_eat / n_na
+# 去重 by code（同 code 跨多保單只算一次），mk_df=None 時 MK 維度回 0
+
+render_hero_kpi_cards(kpis) -> None
+# 渲染 6 卡（2 排 × 3 卡）；kpis["n_funds"]=0 時顯示提示「待載入基金」
+```
+
+**sub-tab 改 segmented_control**（`ui/components/mk_dashboard.py:732+`）：
+
+```python
+_view_options = [
+    f"🛡️ 核心戰情室（{n_core} 檔）",
+    f"⚡ 波段觀測站（{n_sat} 檔）",
+    f"🔍 3-3-3 篩選器（{n_total} 檔池）",
+]
+_view_pick = st.segmented_control("選擇分析視角", _view_options,
+                                    default=_view_options[0],
+                                    key="mk_view_pick")
+# 內容渲染邏輯一字不動，只換切換器
+```
+
+**為何不用 expander 收合配息矩陣**：圖表本體（紅虛線 vs 長條高度視覺化每檔吃本金）有獨立資訊量，下方 4 卡 KPI 才是真重複；圖表保留、4 卡 KPI 砍掉即解決 user 痛點。
+
+**T5 重疊矩陣不動**：原本就是 per-policy `st.expander(expanded=False)` 收合（`tab3_portfolio.py:2195`），無重複問題。
+
+---
+
 ## §4 核心需求五：機構級風險歸因與 σ 絕對位階策略
 
 ### 4-1 底層持股相關性矩陣
