@@ -430,6 +430,28 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-N 保單分頁「schema 鬼列」append_row bug fix（v18.171 修補）
+
+**問題場景**：User 截圖「📋 保單分頁清單」存檔後 `QL19676552` tab 出現 3 列 `policy_name / fund_url / invest_date / currency / notes` 等 schema 英文 key 字串當資料值的鬼列。
+
+**根因**：`repositories/policy_repository.py` 三處 `ws.append_row(list(ALL_COLS))` 補表頭的寫法：
+- `:276` — `upsert_policy_row` 補表頭分支
+- `:474` — `ensure_policy_worksheet` 既有 worksheet 但 row 1 讀成空時補表頭
+- `:480` — `ensure_policy_worksheet` 新建 worksheet 後寫表頭
+
+gspread `append_row` 是**追加到資料末列**而非插入 row 1。當 worksheet 已存在但 row 1 被讀成空（user 手動清過 / gspread 偶發空回應），表頭被塞到資料底部成為鬼列；user 多次「全部寫入」累積 3 列。
+
+**Fix A**（3 處）：`append_row(list(ALL_COLS))` → `ws.update("A1", [list(ALL_COLS)])` 強制 row 1。
+
+**Fix B 防禦過濾**（`load_policy_worksheet:516-525`）：DataFrame 過濾 `(fund_url=='fund_url') & (invest_date=='invest_date') & (currency=='currency')` 的鬼列；現存髒資料畫面立刻乾淨。三欄都比對是為避免「真實基金代碼剛好叫 fund_url」的極端誤刪。
+
+**Test 變更**：
+- `test_ensure_policy_worksheet_creates_when_missing` 改斷言 `update.assert_called_once_with("A1", [list(ALL_COLS)])`
+- 新增 `test_ensure_policy_worksheet_existing_with_empty_row1_writes_header_to_A1_not_append` — 模擬「row 1 空、row 2-3 有資料」場景，斷言不准 `append_row`
+- 新增 `test_load_policy_worksheet_filters_schema_ghost_rows` — 2 個鬼列 record + 1 個真實 record，斷言 load 後只剩 1 列且 `fund_url == "ACTI71"`
+
+---
+
 ### §3-M T7 編輯持倉表單暴露 div_cash_pct + 月配息估算（v18.170 新增）
 
 **問題場景**：T7「📝 編輯持倉（手動微調 — 從 CHUBB 對帳單抄入精確值）」表單僅 5 欄（淨投資金額／淨值／匯率／含息來源／保單號碼）。User 反映保單實際支援「部分配息+部分配股」，希望用「資金的百分比」算每月配息與配股。

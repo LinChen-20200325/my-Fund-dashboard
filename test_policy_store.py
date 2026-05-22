@@ -459,7 +459,50 @@ def test_ensure_policy_worksheet_creates_when_missing():
     ws = ensure_policy_worksheet(client, "FAKE_ID", "PL-NEW")
     # 應該呼叫 add_worksheet 且寫表頭
     sh.add_worksheet.assert_called_once()
-    ws.append_row.assert_called_once_with(list(ALL_COLS))
+    # v18.171：表頭改用 update("A1",...) 強制 row 1（避免 append_row 漂到末列）
+    ws.update.assert_called_once_with("A1", [list(ALL_COLS)])
+
+
+def test_ensure_policy_worksheet_existing_with_empty_row1_writes_header_to_A1_not_append():
+    """v18.171 regression — 既有 worksheet 的 row 1 空但 row 2+ 有資料，
+    必須用 update("A1",...) 寫表頭，不准 append_row（會塞到資料最末列變鬼列）。"""
+    # row 1 空、row 2-3 有基金資料（模擬 user 在 Sheets 手動刪過表頭的情境）
+    existing_ws = _make_ws(all_values=[
+        [],
+        ["QL19676552", "QL19676552", "ACTI71", "500143", "", "USD", "0", "n", "core"],
+        ["QL19676552", "QL19676552", "JFZN3",  "500143", "", "USD", "0", "n", "core"],
+    ])
+    existing_ws.row_values.return_value = []  # row 1 空 → 觸發補表頭分支
+    sh = _make_sh_with_worksheets({"QL19676552": existing_ws})
+    client = _make_client_with_sh(sh)
+    ensure_policy_worksheet(client, "FAKE_ID", "QL19676552")
+    # 不准 append_row（會把 schema 塞到最末列變鬼列）
+    existing_ws.append_row.assert_not_called()
+    # 必須 update("A1", ...) 強制把表頭放 row 1
+    existing_ws.update.assert_called_once_with("A1", [list(ALL_COLS)])
+
+
+def test_load_policy_worksheet_filters_schema_ghost_rows():
+    """v18.171 regression — 舊版 bug 留下的「schema 鬼列」必須在 load 時被過濾。
+    Sheet 中 fund_url='fund_url' & invest_date='invest_date' & currency='currency'
+    是 ensure_policy_worksheet 舊 append_row(ALL_COLS) bug 的指紋。"""
+    real_record = {
+        "policy_id": "QL19676552", "policy_name": "QL19676552",
+        "fund_url": "ACTI71", "invest_twd": "500143", "invest_date": "",
+        "currency": "USD", "fx_at_buy": "0", "notes": "n", "policy_tier": "core",
+    }
+    ghost_record = {
+        "policy_id": "policy_id", "policy_name": "policy_name",
+        "fund_url": "fund_url", "invest_twd": "0", "invest_date": "invest_date",
+        "currency": "currency", "fx_at_buy": "0", "notes": "notes",
+        "policy_tier": "",
+    }
+    ws = _make_ws(records=[real_record, ghost_record, ghost_record])
+    sh = _make_sh_with_worksheets({"QL19676552": ws})
+    client = _make_client_with_sh(sh)
+    df = load_policy_worksheet(client, "FAKE_ID", "QL19676552")
+    assert len(df) == 1                          # 2 個鬼列被濾掉
+    assert df.iloc[0]["fund_url"] == "ACTI71"   # 真資料保留
 
 
 def test_ensure_policy_worksheet_reuses_existing():
