@@ -273,7 +273,10 @@ def upsert_policy_row(
         header = []
     if not header:
         try:
-            ws.append_row(list(ALL_COLS))
+            # v18.171：用 update("A1",...) 強制 row 1 — append_row 會把 header
+            # 塞到資料最末列（rows 1 空但 rows 2+ 有資料時），造成 schema 列
+            # 被當資料寫進保單分頁。
+            ws.update("A1", [list(ALL_COLS)])
             header = list(ALL_COLS)
         except Exception as e:
             raise PolicySheetError(f"寫入表頭失敗：{e}") from e
@@ -471,13 +474,18 @@ def ensure_policy_worksheet(client: Any, sheet_id: str, policy_id: str,
         except Exception:
             header = []
         if not header:
-            ws.append_row(list(ALL_COLS))
+            # v18.171：用 update("A1",...) 強制 row 1 — append_row 會把 header
+            # 塞到資料最末列（rows 1 空但 rows 2+ 有資料時），造成 schema 列
+            # 被當資料寫進保單分頁。
+            ws.update("A1", [list(ALL_COLS)])
         return ws
     except Exception:
         # tab 不存在 → 建立
         try:
             ws = sh.add_worksheet(title=tab, rows=rows, cols=cols)
-            ws.append_row(list(ALL_COLS))
+            # v18.171：新建空 sheet 用 update("A1",...) 也比 append_row 穩
+            # （行為一致、不依賴「資料範圍從哪算」的 gspread 細節）。
+            ws.update("A1", [list(ALL_COLS)])
             return ws
         except Exception as e:
             raise PolicySheetError(f"建立 worksheet '{tab}' 失敗：{e}") from e
@@ -513,6 +521,18 @@ def load_policy_worksheet(client: Any, sheet_id: str, policy_id: str) -> pd.Data
     df["policy_tier"] = df["policy_tier"].str.lower().where(
         df["policy_tier"].str.lower().isin(["core", "satellite"]), ""
     )
+    # v18.171：防禦性過濾 schema 鬼列 — 舊版 ensure_policy_worksheet bug
+    # 會把 `["policy_id","policy_name","fund_url",...]` 用 append_row 塞到資料
+    # 最末列（rows 1 空但 rows 2+ 有資料時），這些列被 get_all_records 解析後
+    # `fund_url == "fund_url"`（字面值）。連帶過濾 invest_date / currency 等
+    # 三欄都是字面 schema key 的明顯鬼列，避免誤刪只是基金代碼剛好命名怪的真資料。
+    _ghost_mask = (
+        (df["fund_url"] == "fund_url")
+        & (df["invest_date"] == "invest_date")
+        & (df["currency"] == "currency")
+    )
+    if _ghost_mask.any():
+        df = df[~_ghost_mask].copy()
     return df
 
 

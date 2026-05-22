@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.171 — 修保單分頁「schema 鬼列」append_row bug + 自動過濾髒資料（2026-05-22）
+
+- [x] **問題場景**（user 截圖反饋）：「📋 保單分頁清單」存檔後 `QL19676552` tab 出現 3 列 `policy_name / fund_url / invest_date / currency / notes` 等**schema 英文 key 字串當成資料值**的鬼列
+- [x] **根因**：`repositories/policy_repository.py:474 & :480 & :276` 的 `ws.append_row(list(ALL_COLS))` — 當 worksheet 已存在但 row 1 被讀成空（user 手動清過 header / gspread row_values 偶發空回應），`append_row` 把表頭塞到**資料最末列**而非 row 1，被當成基金紀錄；user 多次「全部寫入」累積 3 列
+- [x] **Fix A**（3 處 `policy_repository.py:276,474,480`）：`ws.append_row(list(ALL_COLS))` → `ws.update("A1", [list(ALL_COLS)])` 強制 row 1，杜絕表頭漂移
+- [x] **Fix B 防禦性過濾**（`load_policy_worksheet:516-525`）：DataFrame 過濾 `(fund_url=='fund_url') & (invest_date=='invest_date') & (currency=='currency')` 鬼列；現存髒資料畫面立刻乾淨，不必去 Google Sheet 手動刪
+- [x] **更新 regression test**：`test_ensure_policy_worksheet_creates_when_missing` 改斷言 `update.assert_called_once_with("A1", [list(ALL_COLS)])`；新增 `test_ensure_policy_worksheet_existing_with_empty_row1_writes_header_to_A1_not_append`、`test_load_policy_worksheet_filters_schema_ghost_rows` 兩個 case
+- [x] **驗證** `test_policy_store.py` 79/79 PASSED 零回歸
+
 ### v18.170 — T7 編輯持倉表單暴露 div_cash_pct + 月配息估算（部分配股新功能）（2026-05-22）
 
 - [x] **問題場景**（user 截圖反饋）：T7「📝 編輯持倉（手動微調 — 從 CHUBB 對帳單抄入精確值）」表單只有 5 欄（淨投資金額／淨值／匯率／含息來源／保單號碼）；user 反映保單實際支援「部分配息+部分配股（單位）」，希望用「資金的百分比」算每月配息與配股
