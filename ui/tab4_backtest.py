@@ -295,25 +295,37 @@ def render_backtest_tab() -> None:
             # 對齊後刪除全 NaN 行，再前向填充
             nav_df = nav_df.ffill().dropna(how="all")
 
-            # v18.92: cache 太短時，月底 resample 必失敗 → 自動改用週頻/日頻
+            # v18.92: cache 太短時，月底 resample 必失敗 → 自動降頻
+            # v18.175: 門檻改 ≥3 點（=≥2 returns，calc_performance_metrics 最低要求），
+            #          修「月底剛好 2 點 → 綠字『回測完成 2 期』卻又紅字『returns<2』」
+            #          的 off-by-one 矛盾；再補日頻 fallback，讓 ~30 日短歷史也算得出指標
             _nav_full = pd.DataFrame(nav_data).dropna(how="all").ffill().dropna(how="all")
             nav_monthly = nav_df.resample("ME").last().dropna(how="all")
             _resample_freq = "月底"
-            if len(nav_monthly) < 2:
+            _bt_freq = 12
+            if len(nav_monthly) < 3:
                 # 月底不夠 → 試週頻
                 nav_monthly = nav_df.resample("W-FRI").last().dropna(how="all")
-                _resample_freq = "週末（月底樣本 <2 期，自動降週頻）"
-                if len(nav_monthly) < 2:
-                    # 週頻也不夠 → 用所有可用資料（不再篩期間）
+                _resample_freq = "週末（月底樣本 <3 期，自動降週頻）"
+                _bt_freq = 52
+                if len(nav_monthly) < 3:
+                    # 週頻也不夠 → 用完整期間（不再篩期間）的週頻
                     nav_df = _nav_full
                     nav_monthly = nav_df.resample("W-FRI").last().dropna(how="all")
                     _resample_freq = (f"週末（指定期間「{bt_period}」資料太短，"
                                       f"已自動用完整 {_full_span_days} 天）")
+                    _bt_freq = 52
+                    if len(nav_monthly) < 3:
+                        # 週頻仍不夠 → 最後用日頻（不 resample，保留每個交易日）
+                        nav_monthly = nav_df.dropna(how="all")
+                        _resample_freq = (f"日頻（週樣本仍 <3 期，"
+                                          f"已用完整 {len(nav_monthly)} 個交易日）")
+                        _bt_freq = 252
 
-            if len(nav_monthly) < 2:
+            if len(nav_monthly) < 3:
                 _all_span = (nav_df.index.max() - nav_df.index.min()).days if len(nav_df) > 0 else 0
                 bt_status.error(
-                    f"📉 有效淨值樣本不足（僅 {len(nav_monthly)} 期，需 ≥2 期）。\n\n"
+                    f"📉 有效淨值樣本不足（僅 {len(nav_monthly)} 點，需 ≥3 點 = ≥2 期 returns）。\n\n"
                     f"**已抓到資料總長度**：{_full_span_days} 天（{len(_nav_full)} 點）\n"
                     f"**回測期間 `{bt_period}` 後篩剩**：{_all_span} 天\n\n"
                     "💡 **解法**：\n"
@@ -335,8 +347,7 @@ def render_backtest_tab() -> None:
                     total_w = sum(raw_wts.values()) or 1.0
                     wts = pd.Series({c: v / total_w for c, v in raw_wts.items()})
 
-                    # v18.92: 月頻 → freq=12 / 週頻 → freq=52
-                    _bt_freq = 12 if _resample_freq == "月底" else 52
+                    # v18.175: _bt_freq 已在降頻 ladder 決定（月12 / 週52 / 日252）
                     bt_result = backtest_portfolio(
                         nav_monthly[codes_avail],
                         wts,

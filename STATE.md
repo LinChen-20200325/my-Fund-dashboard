@@ -246,6 +246,13 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.175 — 修 Tab4 回測「月底剛好 2 點」off-by-one 矛盾 + 補日頻 fallback（2026-05-23）
+
+- [x] **問題場景**（user 截圖反饋）：4 檔基金回測，補抓全歷史 timeout 退 cache → 月底 resample 剛好 2 點（2026-04-30 ~ 05-31）→ 綠字「回測完成 2 期」**同時**紅字「樣本不足 returns<2」自相矛盾、績效全 —%
+- [x] **根因（off-by-one）**（`ui/tab4_backtest.py:300-323`）：降頻門檻 `len(nav_monthly) < 2` — 月底 2 點不 <2 → **不降週頻也不報錯** → 跑回測 → 2 NAV 點僅 1 個 return → `calc_performance_metrics` 要 ≥2 returns → 回 `{}` → 全 —%
+- [x] **Fix**：門檻 `< 2` → `< 3`（需 ≥3 點 = ≥2 returns）；降頻 ladder 補第 4 層「日頻」（週仍 <3 時保留每交易日，freq=252）；`_bt_freq` 改在 ladder 內決定（月12/週52/日252），移除 L351 重複推導
+- [x] **驗證** 獨立模擬證實月底 2 點 → 新邏輯降週頻得 6 點 / 5 returns 可算指標；`test_backtest_engine.py` 14 + Tab4 apptest PASS（`test_tab3_kpi` 1 失敗為 sandbox yfinance 403 環境問題，stash 後同樣失敗，非本次改動）
+
 ### v18.174 — 全局指標關聯地圖搬到說明書 + 總經因果鏈 Sankey 動態詳細說明（2026-05-23）
 
 - [x] **問題場景**（user 截圖反饋）：Tab1「🗺️ 全局指標關聯地圖」純靜態教學圖長期占首屏；下方「🔗 總經因果鏈 Sankey」動態圖看不懂節點/邊代表什麼
