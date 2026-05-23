@@ -372,8 +372,11 @@ def test_upsert_writes_8_cols_if_sheet_has_legacy_header():
     assert len(_called_values) == len(REQUIRED_COLS)
 
 
-def test_upsert_writes_9_cols_if_sheet_has_new_header():
-    """新 Sheet 表頭含 policy_tier 時，upsert 應寫滿 9 欄。"""
+def test_upsert_writes_all_cols_if_sheet_has_full_header():
+    """表頭含完整 ALL_COLS 時，upsert 應寫滿全部欄、policy_tier 落在正確位置。
+
+    v18.183：ALL_COLS 從 9 → 11（尾端加 div_cash_pct / avg_nav_with_div）。
+    """
     full_header = list(ALL_COLS)
     ws = _make_ws(all_values=[full_header])
     ws.row_values.return_value = full_header
@@ -383,12 +386,69 @@ def test_upsert_writes_9_cols_if_sheet_has_new_header():
         "invest_twd": 1, "invest_date": "", "currency": "USD",
         "fx_at_buy": 31, "notes": "",
         "policy_tier": "satellite",
+        "div_cash_pct": 80, "avg_nav_with_div": 9.5,
     }
     result = upsert_policy_row(client, "FAKE_ID", row)
     assert result == "inserted"
     _called_values = ws.append_row.call_args.args[0]
     assert len(_called_values) == len(ALL_COLS)
-    assert _called_values[-1] == "satellite"
+    assert _called_values[ALL_COLS.index("policy_tier")] == "satellite"
+    assert _called_values[ALL_COLS.index("div_cash_pct")] == 80
+    assert _called_values[ALL_COLS.index("avg_nav_with_div")] == 9.5
+
+
+def test_upsert_fund_upgrades_legacy_header_to_all_cols():
+    """v18.183：per-policy 分頁舊 9 欄表頭（缺 div_cash_pct/avg_nav_with_div）→
+    upsert_fund_in_policy 自動把表頭升級成 ALL_COLS，並寫滿新欄。"""
+    legacy = list(REQUIRED_COLS) + ["policy_tier"]   # 9 欄舊表頭
+    ws = _make_ws(all_values=[legacy])
+    ws.row_values.return_value = legacy
+    sh = _make_sh_with_worksheets({"QL19676552": ws})
+    client = _make_client_with_sh(sh)
+    upsert_fund_in_policy(client, "FAKE_ID", "QL19676552", {
+        "fund_url": "ACTI71", "policy_name": "QL19676552",
+        "invest_twd": 500143, "currency": "USD", "policy_tier": "core",
+        "div_cash_pct": 80, "avg_nav_with_div": 6.96,
+    })
+    _hdr = [c for c in ws.update.call_args_list
+            if c.args and str(c.args[0]).startswith("A1:")]
+    assert _hdr, "舊表頭未被升級"
+    assert _hdr[0].args[1] == [list(ALL_COLS)]
+    appended = ws.append_row.call_args.args[0]
+    assert len(appended) == len(ALL_COLS)
+    assert appended[ALL_COLS.index("div_cash_pct")] == 80
+    assert appended[ALL_COLS.index("avg_nav_with_div")] == 6.96
+
+
+def test_sync_roundtrips_div_cash_pct_and_avg_nav():
+    """v18.183：保單分頁的 div_cash_pct/avg_nav_with_div 讀回 portfolio_funds。"""
+    import pandas as pd
+    df = pd.DataFrame([{
+        "policy_id": "P1", "policy_name": "P1", "fund_url": "AAA",
+        "invest_twd": 1000, "invest_date": "", "currency": "USD",
+        "fx_at_buy": 31, "notes": "", "policy_tier": "core",
+        "div_cash_pct": 80, "avg_nav_with_div": 9.5,
+    }])
+    merged, _ = sync_policies_to_portfolio_funds(df, [])
+    assert len(merged) == 1
+    assert merged[0]["div_cash_pct"] == 80.0
+    assert merged[0]["avg_nav_with_div"] == 9.5
+
+
+def test_sync_empty_optional_does_not_clobber_memory():
+    """空欄（舊表/未升級）不可覆蓋記憶體既有的 div_cash_pct/avg_nav_with_div。"""
+    import pandas as pd
+    df = pd.DataFrame([{
+        "policy_id": "P1", "policy_name": "P1", "fund_url": "AAA",
+        "invest_twd": 1000, "invest_date": "", "currency": "USD",
+        "fx_at_buy": 31, "notes": "", "policy_tier": "core",
+        "div_cash_pct": "", "avg_nav_with_div": "",
+    }])
+    existing = [{"code": "AAA", "policy_id": "P1",
+                 "div_cash_pct": 80, "avg_nav_with_div": 7.0}]
+    merged, _ = sync_policies_to_portfolio_funds(df, existing)
+    assert merged[0]["div_cash_pct"] == 80     # 記憶體值保留
+    assert merged[0]["avg_nav_with_div"] == 7.0
 
 
 # ══════════════════════════════════════════════════════════════════════

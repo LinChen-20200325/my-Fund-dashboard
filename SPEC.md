@@ -430,6 +430,21 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-T div_cash_pct/avg_nav_with_div 加進 v1 保單分頁 schema（v18.183 新增）
+
+**問題場景**（user）：「div_cash_pct 存檔不在 google sheet」。前情：v18.180 已把 `div_cash_pct`/`avg_nav_with_div` 補進 JSON 備份、v18.182 補進 `_持倉總覽` 顯示分頁，但 **v1 保單分頁本身（user 實際讀寫、`全部讀回` 的來源）沒有這兩欄**。
+
+**根因**：v1 `ALL_COLS = REQUIRED_COLS + (policy_tier,)` 無 `div_cash_pct`/`avg_nav_with_div` → upsert 從不寫、`sync_policies_to_portfolio_funds` 讀回也沒有 → 重整 / 全部讀回後歸零（只 JSON 留得住）。v2 schema（`ALL_COLS_V2`）早有這兩欄，但 user 走 v1 + T7 流程。
+
+**Fix（user 選「兩欄都加」）**：
+1. `OPTIONAL_COLS` 尾端追加 `div_cash_pct` + `avg_nav_with_div`（純追加，既有欄位位置不變；`ALL_COLS` 9 → 11 欄）。
+2. **寫**：`upsert_fund_in_policy`（per-policy 分頁、user 路徑）寫入前若表頭缺 `ALL_COLS` 任一欄 → `ws.update("A1:K1", [ALL_COLS])` 升級表頭（既有資料列尾端補空、不錯位），cols 固定 `ALL_COLS`；寫入端（`tab3_t7_ledger.py` v18.179 全量回寫區塊 + `cloud_io.dump_all_to_sheet`）的 row dict 帶上這兩欄。`upsert_policy_row`（legacy 單一 `Policies` 表）改成 `cols = tuple(c for c in ALL_COLS if c in header) or REQUIRED_COLS`（只寫表頭實際有的欄、避免孤兒欄）、不強制升級（向後相容）。
+3. **讀回**：`sync_policies_to_portfolio_funds` 把兩欄讀進 `portfolio_funds`（`_normalize_float`；**有值才帶**，空欄/舊表不覆蓋記憶體既有設定）→ 全部讀回後現金給付%/含息成本不再歸零，真正在 Sheet round-trip。
+
+**驗證**：改 1 舊 test（`test_upsert_writes_*` 9→11 欄）+ 新增 3 test（升級表頭 / sync round-trip / 空欄不覆蓋記憶體），共 269 PASSED 零回歸。
+
+---
+
 ### §3-S 新增「人看得懂的完整成本帳本」分頁 _持倉總覽（v18.182 新增）
 
 **問題場景**（user 截圖 + JSON 備份）：v18.180/181 驗證 OK，但 user 反映「看不到 T7、帳本資料沒在 Excel，JSON 也是」。釐清：

@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.183 — div_cash_pct/avg_nav_with_div 加進 v1 保單分頁 schema（存進 Sheet + 讀回不掉）（2026-05-23）
+
+- [x] **問題場景**（user）：「div_cash_pct 存檔不在 google sheet」。釐清：v1 保單分頁 `ALL_COLS` 只有 invest_twd/policy_tier 等，**無 div_cash_pct/avg_nav_with_div 欄** → 從不寫進保單分頁、且「全部讀回」會歸零（只有 JSON 備份留得住）。v2 schema 早有這兩欄、但 user 走 v1+T7 流程
+- [x] **方案**（user 選「兩欄都加」）：`OPTIONAL_COLS` 尾端追加 `div_cash_pct` + `avg_nav_with_div`（純追加、既有欄位位置不變）；`ALL_COLS` 自動 9→11 欄
+- [x] **寫**：`upsert_fund_in_policy`（per-policy 分頁、user 路徑）寫入前若表頭缺新欄 → 自動 `update("A1:K1", ALL_COLS)` 升級表頭（既有資料列尾端補空、不錯位）、cols 固定 ALL_COLS；寫入端（T7 套用 v18.179 區塊、`dump_all_to_sheet`）row 帶上兩欄。`upsert_policy_row`（legacy Policies 單表）改「寫表頭實際有的欄交集」避免孤兒欄、不強制升級（保留向後相容）
+- [x] **讀回**：`sync_policies_to_portfolio_funds` 把兩欄讀進 portfolio_funds（**有值才帶**，空欄不覆蓋記憶體既有設定）→ 全部讀回不再歸零
+- [x] **驗證** AST PASS；改 1 舊 test（9→11 欄）+ 新增 3 test（升級表頭/sync round-trip/空欄不覆蓋）；`test_policy_store + test_cloud_io + test_policy_keys + test_ledger_snapshot_store + test_app_smoke + test_json_backup + test_fund_ledger + test_migrate_v149_schema + test_portfolio_load` 共 **269 PASSED** 零回歸
+
 ### v18.182 — 新增「人看得懂的完整成本帳本」分頁 _持倉總覽（2026-05-23）
 
 - [x] **問題場景**（user 截圖 + JSON）：v18.180/181 已驗證 OK（JSON 有含息/現金給付%、exported_at 台灣時間）。但 user「看不到 T7、帳本資料沒在 Excel」。釐清：①user 在看 Google 預設空白的 `工作表1`（資料其實在保單分頁，user 確認「有資料」）②完整帳本（單位數/含息成本…）只存在 `_T7_State`（JSON blob、人看不懂）且 user 的 Sheet 沒這分頁；保單分頁只有 invest_twd
