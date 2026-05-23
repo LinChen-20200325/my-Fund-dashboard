@@ -26,9 +26,13 @@ except ImportError:
     import requests
 
 # ── 目標基金代碼 ─────────────────────────────────────────────────────
+# v18.178 (#2)：補齊組合內所有 code（與 user 持倉對齊）。
+#   原漏列 ACDD01（安聯台灣大壩）→ 無 cache → T5 相關係數矩陣算不出（NaN/0）。
+#   ⚠️ 此清單須與 Google Sheet 保單分頁的基金代碼保持同步；新增基金時記得補。
 FUND_CODES = [
     "TLZF9", "ACTI71", "ACTI98", "FLFM1", "CTZP0",
     "ANZ89", "JFZN3",  "ACTI94", "ACCP138", "ACDD19",
+    "ACDD01",
 ]
 
 # 境內基金代碼（安聯台灣境內，走 SITCA 而非 TDCC 境外 API）
@@ -341,6 +345,9 @@ def main():
     tdcc_meta = fetch_tdcc_basic()
     time.sleep(1)
 
+    # v18.178 (#2)：累計每檔結果供結尾診斷表（定位卡 fallback / 歷史太短的 fund）
+    _summary: list[dict] = []
+
     for code in FUND_CODES:
         print(f"\n── {code} ──────────────────────────────")
         existing_cache = load_cache(code)
@@ -424,13 +431,34 @@ def main():
         final_history = merge_history(existing_history, new_rows)
         if final_history:
             save_cache(code, final_history, source_used, fund_name)
+            _final_count, _final_src = len(final_history), source_used
         else:
             print(f"  ⚠️  {code}: 本次無任何資料（保留既有快取 {len(existing_history)} 筆）")
             if existing_history:
                 save_cache(code, existing_history, existing_cache.get("source", "cache_only"), fund_name)
+            _final_count = len(existing_history)
+            _final_src = existing_cache.get("source", "cache_only")
 
+        _summary.append({"code": code, "count": _final_count, "source": _final_src})
         time.sleep(0.5)
 
+    # ── v18.178 (#2)：診斷彙整表 — 一眼看哪些 fund 歷史太短 / 卡 fallback ──
+    print(f"\n{'='*60}")
+    print("📊 NAV 快取診斷彙整（count = 最終快取筆數）")
+    print(f"{'='*60}")
+    print(f"{'代碼':<10}{'筆數':>6}  {'狀態':<14}{'來源'}")
+    print(f"{'-'*60}")
+    for r in sorted(_summary, key=lambda x: x["count"]):
+        n = r["count"]
+        if   n >= 252: status = "✅ ≥1年(可回測)"
+        elif n >= 60:  status = "🟡 ≥季線"
+        elif n >= 30:  status = "🟠 僅短期"
+        else:          status = "🔴 嚴重不足"
+        print(f"{r['code']:<10}{n:>6}  {status:<14}{r['source']}")
+    _short = [r["code"] for r in _summary if r["count"] < 60]
+    if _short:
+        print(f"\n⚠️  以下 {len(_short)} 檔 <60 筆（季線/回測/相關係數會受限，需查來源）："
+              f"{', '.join(_short)}")
     print(f"\n{'='*60}")
     print("完成！")
     print(f"{'='*60}")

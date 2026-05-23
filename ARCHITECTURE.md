@@ -214,7 +214,7 @@ Phase E 收尾才一次性刪除所有 shim，確保中途任何 commit 都可 r
 
 
 ### 定位
-Streamlit Cloud 部署的機構級共同基金監控儀表板，整合總經指標、事件驅動分析、單一基金深度診斷、投資組合管理與轉申購試算，透過 NAS Proxy 穿透抓取 MoneyDJ / TDCC 境內資料。（v18.176 移除回測 Tab；`services/backtest_service.py` 純計算層保留供未來。）
+Streamlit Cloud 部署的機構級共同基金監控儀表板，整合總經指標、事件驅動分析、單一基金深度診斷、投資組合管理與轉申購試算，透過 NAS Proxy 穿透抓取 MoneyDJ / TDCC 境內資料。（v18.176 移除回測 Tab；v18.178 連同 `services/backtest_service.py` + `test_backtest_engine.py` 一併刪除 dead code。下方 §4.5b 等歷史 backtest_engine 段落為 pre-existing drift，本次未重寫。）
 
 ### 核心設計原則
 

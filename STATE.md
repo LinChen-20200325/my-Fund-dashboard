@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.178 — 審計 punch-list 清理 #2/#5/#6（2026-05-23）
+
+- [x] **#5 expander 偵測擴及 `st.status`**（`test_app_smoke.py:33`）：`_is_expander_call` 從只認 `st.expander` 改認 `_EXPANDER_LIKE_ATTRS=("expander","status")` — v18.156 crash 元凶正是 `st.status` 巢狀在 expander 內，偵測網現在涵蓋兩者。95 PASSED（無現存違規）
+- [x] **#6 刪除 backtest dead code**：`services/backtest_service.py` + `test_backtest_engine.py` 全刪 — v18.176 移除回測 Tab 後僅剩自己 test 在用、`backtest_engine.py` shim 早已不存在，確認全孤兒。resolve「月底再平衡 TODO」by elimination（CLAUDE.md §2 清 dead code）。ARCHITECTURE.md:217 同步（§4.5b 等歷史 backtest_engine 段為 pre-existing drift，未重寫）
+- [x] **#2 NAV cache 腳本補強**（`scripts/fetch_nav_cache.py`）：(a) `FUND_CODES` 補 `ACDD01`（安聯台灣大壩 — 原漏列致無 cache、T5 相關係數算不出的根因之一）；(b) 結尾加診斷彙整表（每檔筆數 + 🔴<30/🟠<60/🟡<252/✅≥252 狀態 + 來源，列出 <60 筆需查的 fund）
+- [x] **驗證** AST PASS；診斷表邏輯 isolation dry-run OK；`test_app_smoke + test_holdings_overlap + test_tab3_portfolio` 107 PASSED 零回歸
+- [ ] **#2 殘留**：腳本改好但**沙箱擋 MoneyDJ/Yahoo 403 無法實跑驗證抓取**；需 user 在本地或 GitHub Actions 跑 `python scripts/fetch_nav_cache.py` 才會真正補出 cache。`FUND_CODES` 仍是硬編碼，須與 Sheet 保單分頁手動同步
+
 ### v18.177 — 修 T5 相關係數矩陣「短 NAV → 相關係數=0」假象（自適應頻率）（2026-05-23）
 
 - [x] **問題場景**（user 反饋）：ACDD19 安聯台灣智慧 vs ACDD01 安聯台灣大壩，同為台股基金，T5 矩陣相關係數卻顯示 0，不合直覺

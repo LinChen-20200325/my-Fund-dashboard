@@ -30,11 +30,16 @@ def test_ast_parse_compiles(path: Path) -> None:
 # ════════════════════════════════════════════════════════════
 # T2. expander 巢狀偵測（同檔 + 跨檔 transitive）
 # ════════════════════════════════════════════════════════════
+# v18.178 (#5)：偵測 expander-like context — st.expander 與 st.status 都會渲染成
+# expander，Streamlit 禁止彼此巢狀（v18.156 正是 st.status 包在 expander 內 crash）。
+_EXPANDER_LIKE_ATTRS = ("expander", "status")
+
+
 def _is_expander_call(node: ast.AST) -> bool:
     if not isinstance(node, ast.Call):
         return False
     fn = node.func
-    return (isinstance(fn, ast.Attribute) and fn.attr == "expander"
+    return (isinstance(fn, ast.Attribute) and fn.attr in _EXPANDER_LIKE_ATTRS
             and isinstance(fn.value, ast.Name) and fn.value.id == "st")
 
 
