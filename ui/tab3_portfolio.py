@@ -36,6 +36,7 @@ from infra.oauth import (
     ensure_fresh_tokens,
 )
 from infra.proxy import get_proxy_config
+from ui.helpers.tw_time import tw_now_str
 from models.policy import PK_SEP, fund_pk_str, make_pk, parse_pk, migrate_ledger_dict
 from repositories.fund_repository import fetch_fund_from_moneydj_url
 from repositories.ledger_repository import (
@@ -378,10 +379,7 @@ def render_portfolio_tab() -> None:
                             if not _res["ok"]:
                                 st.error(f"❌ {_res['error']}")
                             else:
-                                import datetime as _dt_q
-                                st.session_state["t3_last_load_at"] = (
-                                    _dt_q.datetime.now().strftime("%Y-%m-%d %H:%M")
-                                )
+                                st.session_state["t3_last_load_at"] = tw_now_str()
                                 _msg = [f"新增 {len(_res['added'])} 檔",
                                         f"保留 {len(_res['kept'])} 檔",
                                         f"移除 {len(_res['removed'])} 檔"]
@@ -423,10 +421,7 @@ def render_portfolio_tab() -> None:
                         if not _res["ok"]:
                             st.error(f"❌ {_res['error']}")
                         else:
-                            import datetime as _dt_q
-                            st.session_state["t3_last_save_at"] = (
-                                _dt_q.datetime.now().strftime("%Y-%m-%d %H:%M")
-                            )
+                            st.session_state["t3_last_save_at"] = tw_now_str()
                             _msg = [f"保單分頁 +{_res['written']} 筆"]
                             if _res["n_state"]:
                                 _msg.append(f"_T7_State +{_res['n_state']} 筆")
@@ -488,14 +483,13 @@ def render_portfolio_tab() -> None:
                         except Exception as _ace2:
                             st.error(f"❌ 未預期錯誤：[{type(_ace2).__name__}] {_ace2}")
             elif _io_panel == "dl":
-                import datetime as _dt_top
                 import json as _json_top
                 from ui.helpers.json_backup import build_export_payload
                 _payload = build_export_payload(st.session_state)
                 _bytes = _json_top.dumps(
                     _payload, ensure_ascii=False, indent=2,
                 ).encode("utf-8")
-                _ts = _dt_top.datetime.now().strftime("%Y%m%d_%H%M%S")
+                _ts = tw_now_str("%Y%m%d_%H%M%S")
                 st.markdown("**💾 下載完整 JSON 備份**")
                 st.caption(
                     f"含 {len(_payload['portfolio_funds'])} 檔基金 + "

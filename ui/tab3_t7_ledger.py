@@ -56,6 +56,7 @@ from ui.helpers.session import (
     calc_data_health as _calc_data_health_pure,
     is_core_fund as _is_core_fund,
 )
+from ui.helpers.tw_time import tw_now_str
 
 
 def _calc_data_health(indicators=None):
@@ -862,7 +863,7 @@ def render_t7_section() -> None:
                     "snapshot": _snap,
                     "summary": _summary,
                     "nav_fx_cache": dict(nav_fx_cache or {}),
-                    "created_at": _dt_now.now().strftime("%H:%M:%S"),
+                    "created_at": tw_now_str("%H:%M:%S"),
                 }
                 st.session_state.t7_scenarios.append(_scenario)
                 if len(st.session_state.t7_scenarios) > _T7_SCENARIO_LIMIT:

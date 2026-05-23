@@ -430,6 +430,18 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-R 「上次寫入/讀回」時間戳顯示 UTC → 統一台灣時間 UTC+8（v18.181 修補）
+
+**問題場景**（user 截圖）：「📦 全部寫入 Sheet」面板「上次寫入：2026-05-23 13:26」看起來「不會動」，且對不上 Google Drive 的「晚上9:25」。
+
+**根因**：所有 wall-clock 時間戳用 bare `datetime.now()`，Streamlit Cloud 伺服器跑 **UTC** → 比台灣慢 8 小時（13:26 UTC = 21:26 台灣，與 Drive 的 9:25PM 其實同一刻）。`t3_last_save_at` 每次寫入都有更新（無 reset），純粹是顯示時區問題。
+
+**Fix（全部統一台灣時間）**：新增 `ui/helpers/tw_time.py` — `tw_now()`（aware datetime, UTC+8）/ `tw_now_str(fmt)`，採固定 `timezone(timedelta(hours=8))`（台灣無 DST、不依賴 tzdata 最穩）。改 5 處：`tab3_portfolio.py` 上次寫入(`t3_last_save_at`)/上次讀回(`t3_last_load_at`)/JSON 備份檔名、`ui/helpers/json_backup.py` `exported_at`、`ui/tab3_t7_ledger.py` 方案 `created_at`；順手刪掉 inline `import datetime as _dt_q/_dt_top` dead import。
+
+**邊界**：方案 id 的 `.timestamp()`（epoch 絕對值、tz 無關）與 ledger 交易 `.today()`（日期）不在範圍。`test_json_backup + test_app_smoke + test_policy_store + test_cloud_io + test_fund_ledger` 共 222 PASSED 零回歸。
+
+---
+
 ### §3-Q T7 含息成本不生效 + JSON 備份漏存含息/現金給付%（v18.180 修補）
 
 **問題場景**（user 反饋）：T7「💾 套用為起始部位」後 ①ledger「看起來沒變」 — `cost_unit_with_div` 永遠等於 `cost_unit`，對帳單欄(10) 含息成本沒生效；②下載的 JSON 備份檔沒有「🟨 現金給付 %」（`div_cash_pct`）與「📋 含息來源 / 含息成本」（`avg_nav_with_div`）。
