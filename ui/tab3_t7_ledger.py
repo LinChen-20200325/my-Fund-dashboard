@@ -757,6 +757,9 @@ def render_t7_section() -> None:
                                                              else "satellite"
                                                              if _fobj_w3.get("is_core") is False
                                                              else ""),
+                                            # v18.183：現金給付% + 含息成本也寫進保單分頁
+                                            "div_cash_pct":     float(_fobj_w3.get("div_cash_pct", 100) or 0),
+                                            "avg_nav_with_div": float(_fobj_w3.get("avg_nav_with_div", 0) or 0),
                                         })
                                         _upserted += 1
                                     except (PolicySheetError, OAuthError) as _e_mi:

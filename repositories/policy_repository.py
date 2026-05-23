@@ -40,8 +40,12 @@ REQUIRED_COLS: tuple[str, ...] = (
 )
 
 # P3：選填欄，舊 Sheet 沒這欄也能讀寫
+# v18.183：新增 div_cash_pct / avg_nav_with_div —— 接在尾端（既有欄位位置不變、
+# 純追加），讓 T7 設定的「現金給付%」「含息成本」也能存進 v1 保單分頁 + 全部讀回不掉。
 OPTIONAL_COLS: tuple[str, ...] = (
-    "policy_tier",   # "core" / "satellite" / ""，控制保單級配置統計
+    "policy_tier",       # "core" / "satellite" / ""，控制保單級配置統計
+    "div_cash_pct",      # v18.183: 配息現金給付% (0~100)
+    "avg_nav_with_div",  # v18.183: 平均買入含息單位成本（對帳單欄(10)）
 )
 
 ALL_COLS: tuple[str, ...] = REQUIRED_COLS + OPTIONAL_COLS
@@ -281,11 +285,13 @@ def upsert_policy_row(
         except Exception as e:
             raise PolicySheetError(f"寫入表頭失敗：{e}") from e
 
-    # 依現有表頭寬度決定寫 8 / 9 欄（向後相容舊 Sheet）
-    _has_tier = "policy_tier" in header
-    cols = ALL_COLS if _has_tier else REQUIRED_COLS
+    # v18.183：寫入對齊「表頭實際有的欄」（依 ALL_COLS 順序取交集）。既不漏寫既有欄、
+    # 也不會寫到表頭沒有的欄（避免無表頭的孤兒欄）。空表頭已補成 ALL_COLS → 寫滿；
+    # 舊 8/9 欄表維持原寬度向後相容（此為 legacy「Policies」單表路徑；per-policy
+    # 分頁的 upsert_fund_in_policy 才會主動升級表頭以持久化新欄）。
+    cols = tuple(c for c in ALL_COLS if c in header) or REQUIRED_COLS
     values = _row_to_list(row, cols)
-    last_col_letter = chr(ord("A") + len(cols) - 1)  # 8 → H、9 → I
+    last_col_letter = chr(ord("A") + len(cols) - 1)
 
     idx = _find_row_index(ws, pid, url)
     try:
@@ -393,6 +399,14 @@ def sync_policies_to_portfolio_funds(
                     "policy_tier": _tier,    # P3：空字串 → 呼叫端 fallback heuristic
                 }
                 target_pks.append(pk)
+                # v18.183：div_cash_pct / avg_nav_with_div 有值才帶回，避免空欄
+                # （舊表/未升級）覆蓋掉記憶體既有設定（kept 走 base.update）。
+                _dcp_raw = row.get("div_cash_pct", "")
+                if str(_dcp_raw).strip() != "":
+                    aggregated[pk]["div_cash_pct"] = _normalize_float(_dcp_raw, 100.0)
+                _anw_raw = row.get("avg_nav_with_div", "")
+                if str(_anw_raw).strip() != "":
+                    aggregated[pk]["avg_nav_with_div"] = _normalize_float(_anw_raw, 0.0)
 
     added, kept = [], []
     merged: list[dict] = []
@@ -590,7 +604,20 @@ def upsert_fund_in_policy(
     except ValueError as e:
         raise PolicySheetError(f"'{tab}' 表頭缺 fund_url：{e}") from e
 
-    cols = ALL_COLS if "policy_tier" in header else REQUIRED_COLS
+    # v18.183：表頭缺 ALL_COLS 任一欄（如舊表沒有 div_cash_pct/avg_nav_with_div）→
+    # 升級表頭。OPTIONAL_COLS 接在尾端、純追加，既有欄位位置不變、既有資料列只是尾端
+    # 多出空格，不會錯位；之後該列被 upsert 才補滿值。
+    if any(c not in header for c in ALL_COLS):
+        try:
+            _hdr_last = chr(ord("A") + len(ALL_COLS) - 1)
+            ws.update(f"A1:{_hdr_last}1", [list(ALL_COLS)])
+        except Exception as e:
+            raise PolicySheetError(f"升級 '{tab}' 表頭失敗：{e}") from e
+        header = list(ALL_COLS)
+        if all_values:
+            all_values[0] = list(ALL_COLS)
+
+    cols = ALL_COLS
     values = _row_to_list(row, cols)
     last_col_letter = chr(ord("A") + len(cols) - 1)
 

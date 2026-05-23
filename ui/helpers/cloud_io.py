@@ -64,6 +64,9 @@ def dump_all_to_sheet(client: object,
                                      else "satellite"
                                      if _f.get("is_core") is False
                                      else ""),
+                    # v18.183：現金給付% + 含息成本也寫進保單分頁
+                    "div_cash_pct":     float(_f.get("div_cash_pct", 100) or 0),
+                    "avg_nav_with_div": float(_f.get("avg_nav_with_div", 0) or 0),
                 })
                 _written += 1
             except (PolicySheetError, OAuthError):
