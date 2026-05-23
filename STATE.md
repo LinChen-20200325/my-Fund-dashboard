@@ -225,8 +225,8 @@
   - 原 `tab3_portfolio.py:1656` 那段 fetch 邏輯改 1 行 call helper
   - 單元測試 `test_portfolio_load.py` 6 個（empty / all loaded / mixed / dedupe / drop empty code / missing session_state）
   - 總計 PR A 64 + PR B 8 + PR B.1 6 = **78/78 pass**
-- [ ] **PR C**（下一輪）「📦 全部寫入/讀回」切換到 v2 主路徑（v2 sheet 自動走 v2）
-- [ ] **PR D**（之後）移除舊 `_T7_State` / `_Ledgers` tab 寫入路徑 + 文件 cleanup
+- [ ] **PR C**（#3，**v18.178 延後**）「📦 全部寫入/讀回」切換到 v2 主路徑 — 觸及真實 Sheet 持倉、沙箱無法 round-trip 驗證，**詳細實作計畫見 `BACKLOG.md` 🚧 Next**，需有 Sheet 憑證 + 副本驗證的 session 執行
+- [ ] **PR D**（#4，**v18.178 延後**）移除舊 `_T7_State` / `_Ledgers` 寫入路徑 + 文件 cleanup — 破壞性，須 PR C 上線且真實資料驗證 OK 後才做（計畫見 `BACKLOG.md`）
 
 ### v18.157 對帳單 type B 支援（累積配息反推含息成本）（2026-05-20）
 
@@ -245,6 +245,57 @@
 - [x] **影響範圍** 3 處 call sites（L1052 頂部捷徑 / L1252 未綁保單快捷 / L1721 主清單下方）一次修復，helper 從此 context-agnostic
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
+
+### v18.178 — 審計 punch-list 清理 #2/#5/#6（2026-05-23）
+
+- [x] **#5 expander 偵測擴及 `st.status`**（`test_app_smoke.py:33`）：`_is_expander_call` 從只認 `st.expander` 改認 `_EXPANDER_LIKE_ATTRS=("expander","status")` — v18.156 crash 元凶正是 `st.status` 巢狀在 expander 內，偵測網現在涵蓋兩者。95 PASSED（無現存違規）
+- [x] **#6 刪除 backtest dead code**：`services/backtest_service.py` + `test_backtest_engine.py` 全刪 — v18.176 移除回測 Tab 後僅剩自己 test 在用、`backtest_engine.py` shim 早已不存在，確認全孤兒。resolve「月底再平衡 TODO」by elimination（CLAUDE.md §2 清 dead code）。ARCHITECTURE.md:217 同步（§4.5b 等歷史 backtest_engine 段為 pre-existing drift，未重寫）
+- [x] **#2 NAV cache 腳本補強**（`scripts/fetch_nav_cache.py`）：(a) `FUND_CODES` 補 `ACDD01`（安聯台灣大壩 — 原漏列致無 cache、T5 相關係數算不出的根因之一）；(b) 結尾加診斷彙整表（每檔筆數 + 🔴<30/🟠<60/🟡<252/✅≥252 狀態 + 來源，列出 <60 筆需查的 fund）
+- [x] **驗證** AST PASS；診斷表邏輯 isolation dry-run OK；`test_app_smoke + test_holdings_overlap + test_tab3_portfolio` 107 PASSED 零回歸
+- [ ] **#2 殘留**：腳本改好但**沙箱擋 MoneyDJ/Yahoo 403 無法實跑驗證抓取**；需 user 在本地或 GitHub Actions 跑 `python scripts/fetch_nav_cache.py` 才會真正補出 cache。`FUND_CODES` 仍是硬編碼，須與 Sheet 保單分頁手動同步
+
+### v18.177 — 修 T5 相關係數矩陣「短 NAV → 相關係數=0」假象（自適應頻率）（2026-05-23）
+
+- [x] **問題場景**（user 反饋）：ACDD19 安聯台灣智慧 vs ACDD01 安聯台灣大壩，同為台股基金，T5 矩陣相關係數卻顯示 0，不合直覺
+- [x] **根因**（`services/portfolio_service.py:454` `calc_correlation_matrix`）：寫死 `s.resample("ME")` 月底重採樣 — 這幾檔卡 ~30 天 fallback NAV，月底只剩 1-2 點 → `pct_change` 僅 1 個 return → `corr` 退化成 NaN（顯示成 0）。模擬證實：月底→NaN；日頻→真實 0.96
+- [x] **Fix**：改自適應頻率，月→週→日逐級降頻，挑第一個 return 列數 ≥6 的最粗頻率，都不足退日頻；回傳新增 `freq` 欄位
+- [x] **UI**（`ui/tab3_portfolio.py:2080`）：notes 顯示實際採用頻率（如「日頻」「週末」），讓 user 知道是降頻算的
+- [x] **新增測試**（`test_holdings_overlap.py`）：`test_corr_short_nav_not_zero`（短 NAV 降頻後相關 >0.8 非 0）、`test_corr_long_nav_keeps_monthly`（長歷史維持月底）、`test_corr_too_few_funds_returns_none`
+- [x] **驗證** AST PASS；`test_holdings_overlap`(8) + `test_tab3_portfolio` + `test_app_smoke` 共 **107 PASSED** 零回歸
+- [ ] **殘留**：根本上 NAV 歷史太短仍是 #2 NAV cache 問題；此 fix 讓「有資料時算對」，但若兩檔完全無重疊期仍會 NaN
+
+### v18.176 — 移除回測 Tab（user 只需汰弱留強判斷換基金）（2026-05-23）
+
+- [x] **決策**（user 明確要求）：「直接移除回測這功能，不想他拖累整個系統速度」— 真實需求是「判斷未來要不要換基金」，由組合基金的戰情室（Sharpe<0 / 配息覆蓋率<1 汰換訊號）+ 汰弱留強評分 + 同類排名滿足，回測（歷史組合模擬）非必要且 NAV 歷史抓不全
+- [x] **app.py**：`st.tabs` 6→5（拿掉「🔬 回測」），刪 `with tab4:` block、`render_backtest_tab` import、死的 `backtest_service` import（calc_performance_metrics/quick_backtest/backtest_portfolio 在 app.py body 從未使用）、更新 docstring
+- [x] **刪 `ui/tab4_backtest.py`**；**保留 `services/backtest_service.py`**（純計算零 IO，不影響速度，留供未來重啟回測；`test_backtest_engine.py` 14 項照留）
+- [x] **測試對齊**：刪 `test_tab4_backtest.py`、刪 apptest `test_tab4_backtest_button...`、smoke tab 清單 6→5、`test_app_py_only_has_render_calls_for_all_5_tabs`（改名 + 斷言 `render_backtest_tab not in src`）、刪 playwright `test_tab4_screenshot_baseline`
+- [x] **文件同步** SPEC.md Tab4 列刪除線標註、STATE 五大模組描述更新、ARCHITECTURE 提及回測處更新
+- [x] **驗證** AST × 5 PASS；`test_app_smoke + test_tab3_portfolio + test_backtest_engine` 115 PASSED；AppTest 啟動 2 passed app 正常開（`test_tab3_kpi` 1 失敗為 sandbox yfinance 403 環境問題，非本次）
+
+### v18.175 — 修 Tab4 回測「月底剛好 2 點」off-by-one 矛盾 + 補日頻 fallback（2026-05-23）
+
+- [x] **問題場景**（user 截圖反饋）：4 檔基金回測，補抓全歷史 timeout 退 cache → 月底 resample 剛好 2 點（2026-04-30 ~ 05-31）→ 綠字「回測完成 2 期」**同時**紅字「樣本不足 returns<2」自相矛盾、績效全 —%
+- [x] **根因（off-by-one）**（`ui/tab4_backtest.py:300-323`）：降頻門檻 `len(nav_monthly) < 2` — 月底 2 點不 <2 → **不降週頻也不報錯** → 跑回測 → 2 NAV 點僅 1 個 return → `calc_performance_metrics` 要 ≥2 returns → 回 `{}` → 全 —%
+- [x] **Fix**：門檻 `< 2` → `< 3`（需 ≥3 點 = ≥2 returns）；降頻 ladder 補第 4 層「日頻」（週仍 <3 時保留每交易日，freq=252）；`_bt_freq` 改在 ladder 內決定（月12/週52/日252），移除 L351 重複推導
+- [x] **驗證** 獨立模擬證實月底 2 點 → 新邏輯降週頻得 6 點 / 5 returns 可算指標；`test_backtest_engine.py` 14 + Tab4 apptest PASS（`test_tab3_kpi` 1 失敗為 sandbox yfinance 403 環境問題，stash 後同樣失敗，非本次改動）
+
+### v18.174 — 全局指標關聯地圖搬到說明書 + 總經因果鏈 Sankey 動態詳細說明（2026-05-23）
+
+- [x] **問題場景**（user 截圖反饋）：Tab1「🗺️ 全局指標關聯地圖」純靜態教學圖長期占首屏；下方「🔗 總經因果鏈 Sankey」動態圖看不懂節點/邊代表什麼
+- [x] **Move 教學圖**（`ui/tab1_macro.py:126-133` 整塊移除 / `ui/tab6_manual.py` 新增第 10 sub-tab）：靜態地圖 + 升息/降息劇本 + 投資應用 3 點搬到說明書，避免占首屏；`render_indicator_map()` 函數保留在 tab1，tab6 cross-import 復用避免重複定義
+- [x] **動態詳細說明**（`ui/tab1_macro.py:1763+` Sankey 圖下方新 expander）：
+  - 🔍 8 節點現況：依 node_colors 映射 🔴 壓力高 / 🟠 偏離均值 / 🟡 略偏負面 / 🟢 健康 / 🌫️ 無 z-score
+  - 🔗 9 條因果鏈強弱分級：依 |corr| 三檔（🔥≥0.5 強 / 🌤️ 0.3-0.5 中等 / ❄️ <0.3 弱 / 🌫️ <12 期共同期無法計算），每條附 `source → target：edu_note (corr=±0.XX, 強/中/弱 正/負相關)`
+  - 若 Phase 2（非動態）→ 引導 user 打開「🆕 動態權重」checkbox 才看得到分級
+- [x] **驗證** AST × 2 PASS；`test_policy_store + test_app_smoke + test_macro_core` 共 **217 PASSED** 零回歸
+
+### v18.173 — T7「預估月配股 (TWD)」欄附顯「可換單位數」（2026-05-23）
+
+- [x] **問題場景**（user 截圖反饋）：v18.172 已把月配股 TWD 拆出來，但只看到金額不知對應幾單位 — 配股 = 把現金部位再投入基金，需直接呈現「能換到的單位數」才好對應到帳本 units
+- [x] **算式**（`ui/tab3_t7_ledger.py:1929-1934`）：`units = (月配股 TWD) / FX / NAV`；只在 `_ann_reinv > 0 and _nav and _fx` 才附顯，否則維持單純 `NT$0`
+- [x] **顯示格式**：`"NT$2,802 (32.8762 單位)"`；no-ledger 與 0 配股列照舊 `—` / `NT$0`
+- [x] **驗證** AST PASS；`python -m pytest test_policy_store.py -q` 80 PASSED 零回歸
 
 ### v18.172 — T7 KPI 拆「現金配息 / 配股」+ 鬼列 filter 補修大寫（2026-05-22）
 
@@ -456,7 +507,7 @@
 ---
 
 ## 專案定位
-Streamlit Cloud 部署的境外共同基金監控儀表板。整合總經位階、單一基金診斷、組合再平衡試算、歷史回測、資料診斷五大模組。
+Streamlit Cloud 部署的境外共同基金監控儀表板。整合總經位階、單一基金診斷、組合再平衡試算、資料診斷五大 Tab（v18.176 移除回測 Tab，換基金判斷改用組合基金的汰弱留強/戰情室）。
 
 ## 模組地圖
 | 檔案 | 職責 |
