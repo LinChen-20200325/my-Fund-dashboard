@@ -6,9 +6,10 @@
 """
 from __future__ import annotations
 
-import datetime as _dt
 import json as _json
 from typing import Any, MutableMapping
+
+from ui.helpers.tw_time import tw_now
 
 SCHEMA_VERSION = "1.0"
 
@@ -42,7 +43,7 @@ def build_export_payload(ss: MutableMapping[str, Any]) -> dict:
         _ledgers_dict[_pk] = _to_dict() if callable(_to_dict) else _l
     return {
         "schema_version":   SCHEMA_VERSION,
-        "exported_at":      _dt.datetime.now().isoformat(timespec="seconds"),
+        "exported_at":      tw_now().isoformat(timespec="seconds"),
         "portfolio_funds":  _slim_funds,
         "t7_ledgers":       _ledgers_dict,
         "t7_scenarios":     list(ss.get("t7_scenarios", []) or []),

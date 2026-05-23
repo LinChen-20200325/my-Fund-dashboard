@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.181 — 修「上次寫入/讀回」時間戳顯示 UTC（應為台灣 UTC+8）（2026-05-23）
+
+- [x] **問題場景**（user 截圖）：雲端存檔面板「上次寫入：2026-05-23 13:26」看起來「不會動」，且對不上 Google Drive 顯示的「晚上9:25」。實為時區 bug — 13:26 UTC = 21:26 台灣，同一刻只是差 8 小時
+- [x] **根因**：所有 wall-clock 時間戳用 bare `datetime.now()`；Streamlit Cloud 伺服器跑 UTC → 比台灣慢 8 小時。`t3_last_save_at` 其實每次寫入都有更新（無 reset），只是顯示 UTC
+- [x] **Fix（全部統一台灣時間）**：新增 `ui/helpers/tw_time.py`（`tw_now()` / `tw_now_str()`，固定 UTC+8 offset、不依賴 tzdata、台灣無 DST）。改 5 處：`tab3_portfolio.py` 上次寫入/上次讀回/JSON 備份檔名、`json_backup.py` `exported_at`、`tab3_t7_ledger.py` 方案 `created_at`。順手清掉 inline `import datetime as _dt_q/_dt_top` dead import
+- [x] **邊界**：方案 id 的 `.timestamp()`（epoch）tz 無關不動；ledger 交易 `.today()`（日期）不在範圍。`tw_now_str()` 實測回 21:3x（容器 UTC 13:3x +8）正確
+- [x] **驗證** AST PASS、import 無循環；`test_json_backup + test_app_smoke + test_policy_store + test_cloud_io + test_fund_ledger` 共 **222 PASSED** 零回歸
+
 ### v18.180 — 修 T7 含息成本不生效 + JSON 備份漏存含息/現金給付%（2026-05-23）
 
 - [x] **問題場景**（user 反饋）：T7 套用起始部位後 ①ledger「看起來沒變」（`cost_unit_with_div` 永遠 = `cost_unit`）②下載的 JSON 備份檔沒有「🟨 現金給付 %」與「📋 含息來源（含息成本）」
