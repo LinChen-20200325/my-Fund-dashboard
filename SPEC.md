@@ -430,6 +430,27 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AN 故事化 Tab1/Tab2 內部故事站標題（v18.204 新增）
+
+**背景**：先前只有 Tab3 做完整內部故事站（v18.195）；Tab1/Tab2 只有頂部敘事麵包屑（v18.193）。本次補 Tab1/Tab2 的內部 `###` 故事站標題，使三個敘事 tab 一致（純加/改 markdown、零區塊搬移）。
+
+**Tab2 單一基金**（success path 為 flat、indent 16，4 站，全新插入）：
+- `### ① 基本資料 & 淨值趨勢`（淨值 success 卡前）
+- `### ② 買賣點信號（標準差策略）`（MK 標準差買賣點前）
+- `### ③ 風險指標 & 配息`（`col_a/col_b` 雙欄前）
+- `### ④ AI 深度解盤`（AI 區 `st.divider()` 前）
+
+**Tab1 總經**（內部有子分頁 `tab_main, tab_edu = st.tabs(...)`；戰情內容在 `with tab_main:` indent 12，3 站）：
+- insert `### ① 總經位階評估`（tab_main 頂）
+- **prefix 既有 header**（零風險、不新增節點）：`### ② 🎯 全域導航塔（戰情室）`、`### ③ 📡 景氣拐點監控`
+- AI 解盤 widget 本身即「🤖 AI 白話文總結」expander，已是獨立章節，不另加
+
+**刻意不做**：Tab1 的「資本防線/含息」「四大類別」等子段落深埋 `with col:` column layout → 在欄內塞 `###` 會被擠壓/不一致、且沙箱無法驗視覺 → 不硬塞。Tab5 資料診斷 / Tab6 說明書為工具/說明性質，不在「總經→配置→單一」敘事主線。
+
+**驗證**：AST PASS、Tab1 3 站 / Tab2 4 站就位、`test_app_smoke + test_tab1_macro + test_tab2_single_fund` 105 passed、`pytest -m "not slow"` 599 passed / 1 skipped + AppTest。
+
+---
+
 ### §3-AM 程式碼健康度：修 fund_repository 3 個潛伏 NameError/UnboundLocal（v18.203 新增）
 
 **背景**（健康度清理）：ruff F821 掃 `repositories/fund_repository.py` 出多個「未定義名稱」。逐一查證**皆為潛伏 bug**——平時被 `and` 短路 / `try-except` / 從不觸發的 edge case 遮蔽，故 app 平時不發作，但特定情境會 NameError/UnboundLocalError。

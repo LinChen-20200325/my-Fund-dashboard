@@ -274,6 +274,7 @@ def render_macro_tab() -> None:
             except Exception as _exc:
                 st.warning(f"指標教學手冊載入失敗：{_exc}")
         with tab_main:
+            st.markdown("### ① 總經位階評估")
             # ══ v17.3「宏觀健康度總分」字卡（首頁頂部，5 級白話評價）═══
             # 計算：Σ (score × weight)，缺值/NaN 補 0；零快取（CLAUDE.md §4）
             _macro_total = calculate_composite_score(ind)
@@ -441,7 +442,7 @@ def render_macro_tab() -> None:
                 # ══════════════════════════════════════════════════
                 # V5 全域導航塔（War Room）── 三圓形氣象儀表
                 # ══════════════════════════════════════════════════
-                st.markdown("### 🎯 全域導航塔")
+                st.markdown("### ② 🎯 全域導航塔（戰情室）")
                 _sahm_d  = ind.get("SAHM")  or {}
                 _sloos_d = ind.get("SLOOS") or {}
                 _adl_d   = ind.get("ADL")   or {}
@@ -1471,7 +1472,7 @@ def render_macro_tab() -> None:
 
             # ── v18.20 📡 景氣拐點監控 (Leading Indicator Tracker) ──
             st.divider()
-            st.markdown("### 📡 景氣拐點監控 (Leading Indicator Tracker)")
+            st.markdown("### ③ 📡 景氣拐點監控 (Leading Indicator Tracker)")
             st.caption("即時偵測兩個歷史最關鍵的景氣翻轉訊號：製造業新訂單－庫存擴散、"
                        "10Y-2Y 殖利率倒掛翻正")
             try:
