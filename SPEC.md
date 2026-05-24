@@ -430,6 +430,22 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AD Task2.2-step2a 組合 Tab 內部故事線：T7 移到 T5 之前（v18.194 新增）
+
+**目標**：組合 Tab 內部由上而下理成「① 配置總覽 → ② 加入/載入 → ③ 持倉戰情(T7) → ④ 重疊診斷(T5)」。
+
+**本次（step2a，最安全一步）**：`render_portfolio_tab()` 原順序「收益矩陣 → **T5 重疊診斷 → T7 持倉帳本** → AI」——持倉(③) 竟排在診斷(④) 之後。把 `render_t7_section()` 從 T5 之後移到 **T5 之前**：「收益矩陣 → **T7 → T5** → AI」。
+
+**為何安全**（先以 Explore 對整個 ~2000 行函式做 section + 依賴 mapping）：
+- Streamlit 由上而下執行 → 載入/計算必須在顯示之前。T7 為**自含函式呼叫**（`ui/tab3_t7_ledger.render_t7_section()`，內部讀 `st.session_state`），且置於所有「載入 / 加入 / 批次」區塊（L1425–1793）之後 → portfolio_funds / t7_ledgers 已齊全。
+- T5 用區塊內自建的 `_pf_for_corr_raw` / `_t5_groups` + series，與 T7 的 invest_twd sync 無關 → 互換零 use-before-define / NameError 風險；`render_t7_section()` 全檔僅 1 處呼叫。
+
+**延後（step2b，需 user 視覺回饋）**：把「配置總覽（核心/衛星 hero + KPI + 成長曲線）」上移到最前，牽涉搬動多個 ~100 行 DISPLAY 區塊、沙箱無法驗證畫面。
+
+**驗證**：AST PASS、ruff F-check clean、`render_t7_section` 1 呼叫、99 PASSED（含 full app.py exec）+ AppTest。
+
+---
+
 ### §3-AC Task2.2-step1 故事化動線：tab 重排 + 敘事導覽列（v18.193 新增）
 
 **目標**（v5.0 Task2「故事化排版」）：讓使用者順著「全球總經環境 → 核心/衛星資產配置 → 單一基金深掘」閱讀。此重構偏視覺、沙箱無法驗證畫面 → **分階段**；本次做最高槓桿/低風險的 step1，tab 內部區塊重排留作逐 tab 後續（需 user 視覺回饋）。
