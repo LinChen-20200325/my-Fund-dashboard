@@ -430,6 +430,22 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AH 保單分頁「存全」：avg_nav/fx_avg/units 加進 schema（v18.198 新增）
+
+**痛點**（user 反覆回報「存檔資料沒有全部」）：v1 保單分頁只存 invest_twd / 含息成本 / 現金給付%，**缺平均買入淨值（avg_nav）/ 平均買入匯率（fx_avg）/ 持有單位數（units）**——這三個成本基礎原本只在 `_T7_State`（機器 JSON blob）與 `_持倉總覽`。v18.191 只補了讀取端（用帳本回填記憶體），寫入端的保單分頁仍半套。
+
+**Schema**：`OPTIONAL_COLS` 尾端純追加 `avg_nav` / `fx_avg` / `units`（`ALL_COLS` 11→14）。`upsert_fund_in_policy` 表頭升級範圍自動由 A1:K1 → A1:N1；既有 11 欄表頭下次 upsert 自動升級、舊資料列尾端補空不錯位（同 v18.183 模式）。
+
+**寫入**（成本基礎權威來源 = 帳本）：`dump_all_to_sheet`（全部寫入）與 T7「套用起始部位」upsert 兩路徑，`avg_nav/fx_avg/units` **優先取 `t7_ledgers[pk].position`（cost_unit/fx_avg/units），缺則退 portfolio_funds**。T7 表單 submit 也把 `_cu/_fx/_u` 寫進 `portfolio_funds`（供 dump + JSON 一致）。
+
+**讀回**：`sync_policies_to_portfolio_funds` 把三欄讀回 `portfolio_funds`（**有值才帶、空欄不覆蓋記憶體**），配合 v18.191 reconcile（帳本回填）成讀取端雙保險。
+
+**相容**：既有 test 用 `list(ALL_COLS)`/`len(ALL_COLS)` 動態斷言 → 自動相容；`upsert_policy_row`（legacy 單表）仍只寫「表頭交集」不強制升級（向後相容）。
+
+**驗證**：AST PASS、ruff clean、新增 3 test、`pytest -m "not slow"` 595 passed / 1 skipped + AppTest。
+
+---
+
 ### §3-AG hotfix「全部讀回」ValueError + v5.0 收尾驗收（v18.197 新增）
 
 **user 阻斷 bug**：按「立即全部讀回」→ `❌ [ValueError] The truth value of a Series is ambiguous`，讀取整個失敗。

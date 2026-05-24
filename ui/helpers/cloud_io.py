@@ -44,6 +44,7 @@ def dump_all_to_sheet(client: object,
         _written = 0
         _skipped_no_pid = 0
         _write_errors: list[str] = []   # v18.189：收集 per-fund 寫入失敗（原本靜默 continue）
+        _t7 = ss.get("t7_ledgers", {}) or {}   # v18.198：成本基礎權威來源
         for _f in ss.get("portfolio_funds", []) or []:
             _pid = str(_f.get("policy_id", "") or "").strip()
             _code = str(_f.get("code", "") or "").strip().upper()
@@ -52,6 +53,14 @@ def dump_all_to_sheet(client: object,
                 continue
             if not _code:
                 continue
+            # v18.198：完整成本基礎優先取 t7_ledgers（帳本），缺則退 portfolio_funds
+            _pos = getattr(_t7.get(fund_pk_str(_f)), "position", None)
+            _avg_nav = (float(getattr(_pos, "cost_unit", 0) or 0) if _pos
+                        else float(_f.get("avg_nav", 0) or 0))
+            _fx_avg = (float(getattr(_pos, "fx_avg", 0) or 0) if _pos
+                       else float(_f.get("fx_avg", 0) or 0))
+            _units = (float(getattr(_pos, "units", 0) or 0) if _pos
+                      else float(_f.get("units", 0) or 0))
             try:
                 upsert_fund_in_policy(client, sheet_id, _pid, {
                     "fund_url":     _code,
@@ -68,6 +77,10 @@ def dump_all_to_sheet(client: object,
                     # v18.183：現金給付% + 含息成本也寫進保單分頁
                     "div_cash_pct":     float(_f.get("div_cash_pct", 100) or 0),
                     "avg_nav_with_div": float(_f.get("avg_nav_with_div", 0) or 0),
+                    # v18.198：完整成本基礎（平均買入淨值/匯率/單位數）
+                    "avg_nav":          _avg_nav,
+                    "fx_avg":           _fx_avg,
+                    "units":            _units,
                 })
                 _written += 1
             except (PolicySheetError, OAuthError) as _e_up:

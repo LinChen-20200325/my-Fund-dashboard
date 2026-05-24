@@ -693,6 +693,10 @@ def render_t7_section() -> None:
                         _f_obj["invest_twd"]       = int(_inv)
                         _f_obj["avg_nav_with_div"] = float(_anw)
                         _f_obj["div_cash_pct"]     = max(0.0, min(100.0, float(_dcp)))
+                        # v18.198：完整成本基礎也存進 portfolio_funds（供保單分頁寫全 + JSON）
+                        _f_obj["avg_nav"]          = float(_cu)
+                        _f_obj["fx_avg"]           = float(_fx)
+                        _f_obj["units"]            = float(_u)
                         _applied += 1
                         # v18.179：記下有保單號碼的基金，存檔時全量回寫保單分頁
                         if _pid_new:
@@ -760,6 +764,10 @@ def render_t7_section() -> None:
                                             # v18.183：現金給付% + 含息成本也寫進保單分頁
                                             "div_cash_pct":     float(_fobj_w3.get("div_cash_pct", 100) or 0),
                                             "avg_nav_with_div": float(_fobj_w3.get("avg_nav_with_div", 0) or 0),
+                                            # v18.198：完整成本基礎（平均買入淨值/匯率/單位數）
+                                            "avg_nav":          float(_fobj_w3.get("avg_nav", 0) or 0),
+                                            "fx_avg":           float(_fobj_w3.get("fx_avg", 0) or 0),
+                                            "units":            float(_fobj_w3.get("units", 0) or 0),
                                         })
                                         _upserted += 1
                                     except (PolicySheetError, OAuthError) as _e_mi:

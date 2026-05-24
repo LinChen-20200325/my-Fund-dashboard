@@ -435,6 +435,39 @@ def test_sync_roundtrips_div_cash_pct_and_avg_nav():
     assert merged[0]["avg_nav_with_div"] == 9.5
 
 
+def test_sync_roundtrips_full_cost_basis_v198():
+    """v18.198：保單分頁的 avg_nav/fx_avg/units 讀回 portfolio_funds（有值才帶）。"""
+    import pandas as pd
+    df = pd.DataFrame([{
+        "policy_id": "P1", "policy_name": "P1", "fund_url": "ACTI71",
+        "invest_twd": 499509, "invest_date": "", "currency": "美元",
+        "fx_at_buy": 0, "notes": "", "policy_tier": "core",
+        "div_cash_pct": 100, "avg_nav_with_div": 6.9655,
+        "avg_nav": 8.67, "fx_avg": 32.35, "units": 1780.94,
+    }])
+    merged, _ = sync_policies_to_portfolio_funds(df, [])
+    assert merged[0]["avg_nav"] == 8.67
+    assert merged[0]["fx_avg"] == 32.35
+    assert merged[0]["units"] == 1780.94
+
+
+def test_sync_empty_cost_basis_does_not_clobber_memory_v198():
+    """avg_nav/fx_avg/units 空欄不可覆蓋記憶體既有值。"""
+    import pandas as pd
+    df = pd.DataFrame([{
+        "policy_id": "P1", "policy_name": "P1", "fund_url": "AAA",
+        "invest_twd": 1000, "invest_date": "", "currency": "USD",
+        "fx_at_buy": 0, "notes": "", "policy_tier": "core",
+        "avg_nav": "", "fx_avg": "", "units": "",
+    }])
+    existing = [{"code": "AAA", "policy_id": "P1",
+                 "avg_nav": 8.67, "fx_avg": 32.35, "units": 100.0}]
+    merged, _ = sync_policies_to_portfolio_funds(df, existing)
+    assert merged[0]["avg_nav"] == 8.67     # 記憶體值保留
+    assert merged[0]["fx_avg"] == 32.35
+    assert merged[0]["units"] == 100.0
+
+
 def test_sync_empty_optional_does_not_clobber_memory():
     """空欄（舊表/未升級）不可覆蓋記憶體既有的 div_cash_pct/avg_nav_with_div。"""
     import pandas as pd
