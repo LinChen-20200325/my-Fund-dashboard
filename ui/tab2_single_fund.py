@@ -336,6 +336,7 @@ def render_single_fund_tab() -> None:
                     for _pi, (_pk, _pv) in enumerate(list(_p_perf.items())[:4]):
                         _perf_cols[_pi].metric(f"報酬率({_pk})", f"{_pv:.2f}%" if isinstance(_pv,(int,float)) else str(_pv))
             else:
+                st.markdown("### ① 基本資料 & 淨值趨勢")
                 st.success(f"✅ **{name or fk}** ｜ 淨值 {len(s)} 筆 ‧ 配息 {len(divs)} 筆")
 
                 # MK 訊號卡片
@@ -513,6 +514,7 @@ def render_single_fund_tab() -> None:
                         else:
                             st.markdown("🟡 **三率持平**<br>搭配布林研判", unsafe_allow_html=True)
 
+                st.markdown("### ② 買賣點信號（標準差策略）")
                 # ── MK 標準差買賣點分析 v3.0（3 買 + 3 賣 + 接近度）──
                 _m_buy1 = m.get("buy1"); _m_buy2 = m.get("buy2"); _m_buy3 = m.get("buy3")
                 _m_sell1 = m.get("sell1"); _m_sell2 = m.get("sell2"); _m_sell3 = m.get("sell3")
@@ -891,6 +893,7 @@ def render_single_fund_tab() -> None:
                 except Exception as _kpi_e:  # noqa: BLE001
                     st.caption(f"吃本金 KPI 計算異常：{str(_kpi_e)[:60]}")
 
+                st.markdown("### ③ 風險指標 & 配息")
                 # 關鍵指標 + 配息
                 col_a, col_b = st.columns(2)
                 with col_a:
@@ -1136,6 +1139,7 @@ def render_single_fund_tab() -> None:
                             else:
                                 st.warning("所有持倉均無法解析 Ticker 或 yfinance 暫無財報，請稍後再試。")
 
+                st.markdown("### ④ AI 深度解盤")
                 # AI 基金分析
                 st.divider()
                 if GEMINI_KEY:

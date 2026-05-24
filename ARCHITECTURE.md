@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.204 / 2026-05-24** — 故事化 Tab1/Tab2 內部故事站（呼應 Tab3 v18.195）。Tab2（success path flat indent16，4 站）插入 `### ① 基本資料&淨值趨勢 / ② 買賣點信號 / ③ 風險指標&配息 / ④ AI 深度解盤`。Tab1（內部子分頁 tab_main，indent12）insert `### ① 總經位階評估` + prefix 既有 header `② 🎯 全域導航塔 / ③ 📡 景氣拐點監控`（零風險）；AI widget 本即自帶 expander 章節。Tab1 資本防線/四大類別深埋 column → 不硬塞（沙箱無法驗視覺）；Tab5/6 不在敘事主線。純 markdown 加/改、零區塊搬移。599 passed。
+
 > 🆕 **v18.203 / 2026-05-24** — 程式碼健康度：修 fund_repository 3 個潛伏 bug（ruff F821 查證）。(1) 缺 `import re` → 13 處 HTML 解析 `re.*` 被呼叫時 NameError→靜默失敗；(2) 缺 `import requests` → 3 處 proxy-aware `requests.get` NameError→落 fallback；(3) `_is_insurance_code` 在 `_fetch_fund_single` 內 use-before-assign（nav<10 短資料 fallback L2484+ 先引用、L2581 才賦值）→ 短資料 UnboundLocalError（查無資料 edge case）。修：補兩個模組層 import + 把 `_is_insurance_code` 提前到函式開頭。F821 13→0。`test_app_apptest` 為 slow tier、不在 fast CI；其 yfinance 403 為沙箱網路限制非程式 bug。新增 guard test，598 passed。
 
 > 🆕 **v18.202 / 2026-05-24** — NAV 快取代碼自動彙整。`scripts/fetch_nav_cache.py` 的 `FUND_CODES` 寫死、新增基金易漏。新增 `_discover_fund_codes()`：baseline ∪ 既有 cache 檔（self-heal）∪ Sheet（CI 有 `GOOGLE_SERVICE_ACCOUNT_JSON`+`POLICY_SHEET_ID` 時，否則略過、不 import gspread）。CI workflow 無 Sheet 憑證 → self-heal 先生效；加 secret 後即全自動。T5 短 NAV 相關係數已於 v18.177 修；本次專注代碼彙整。新增 2 test，598 passed。
