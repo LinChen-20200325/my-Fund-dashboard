@@ -530,7 +530,6 @@ Tab5 開啟（唯讀 + 動態計算）
 |------|------|------|------|
 | `analyze_macro_structured(…)` | `indicators, phase, news, oas_z` | `str` | v10 六章節輸出（含事件警報/新手/老手） |
 | `event_impact_analysis(holdings, news)` | `dict, list[dict]` | `dict` | **(v10 新增)** 持股 × 新聞交叉比對 → `{triggered, severity, alerts}` |
-| `analyze_fund_json(…)` | 基金相關 dict | `str` | 單一基金 AI 分析（含 σ 絕對位階）|
 
 **`event_impact_analysis` 輸出結構：**
 ```
@@ -745,6 +744,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 > 🆕 **v18.152 / 2026-05-20 (PR B.2)** — Google Sheets 429 quota 退避 + 60s cache + 友善訊息。`repositories/policy_repository.py` 加 `_QUOTA_BACKOFFS` / `_is_quota_error` / `_with_quota_retry`（與 `snapshot_repository` 一致，1s→2s→4s→8s 共 4 次），所有 v2 read/write 函式包進去。`ui/helpers/v2_editor.py` 加 `st.cache_data(ttl=60)` wrapper（`_cached_list_policies` / `_cached_load_policy_v2`），client 參數用 `_client` 底線前綴避 Streamlit hash；寫入/刪除/重讀後 `_invalidate_cache(sheet_id)`。`_show_quota_friendly()` 偵測 429 → 顯示「⏳ Google Sheets API 配額暫時超載...請等 30-60 秒」與重試按鈕，取代 raw stack trace。
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
+
+> 🆕 **v18.209 / 2026-05-24** — 程式碼健康度：清除 dead `analyze_fund_json`（user 選「清 dead code」）。v18.207 三 AI 整併後 `analyze_fund_json` 無 live caller → 删函式（~128 行）+ 連帶私有 helper `_format_news_for_fund_ai`（僅它用，~26 行；`_format_fund_holdings` 因 mk_advisor 共用保留）+ ai_service 孤兒 import（`FUND_JSON_SCHEMA_HINT`/`fund_analysis_to_markdown`/`parse_llm_json`/`build_fund_json_prompt`/`build_fund_json_structured_prompt`，本體+test 仍在來源模組未動）。Bonus：app.py 整段死 import（5 個 ai_service 名稱在 425 行收口後全未使用、無 re-export）一併移除。AST PASS、無 dangling ref、606 passed、slow AppTest 全綠。
 
 > 🆕 **v18.208 / 2026-05-24** — Tab2 唯一 AI 快照加料（承 v18.207，user 選「強化 ④ 解盤」）。全章節快照補 4 旗艦訊號：**σ絕對位階(HWM)**（AI 區重算 `calc_hwm_sigma_levels(s,252)` → label/距HWM%/σ_rank）、**賣點 sell1-3**、**吃本金 coverage**（重算 `div_safety_check(ret_1y_total, annual_div_rate)` → coverage+alert_level，Core Protocol Ch.3.2）、**經理費**（`mj_raw.mgmt_fee`）。重算項以 `if s is not None` + try 守短序列/累積型邊界。簽名核對相符。606 passed、Tab2 AppTest。
 

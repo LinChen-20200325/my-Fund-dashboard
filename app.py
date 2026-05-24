@@ -44,11 +44,6 @@ from fund_fetcher  import (
     normalize_result_state, merge_non_empty, set_risk_free_rate,
     fetch_market_news,
 )
-from services.ai_service import (
-    analyze_fund_json, analyze_macro_structured,
-    analyze_portfolio_mk_advisor,
-    event_impact_analysis, build_stale_flags,
-)
 from services.portfolio_service import (
     calc_fund_factor_score,
     dividend_safety as div_safety_check,
