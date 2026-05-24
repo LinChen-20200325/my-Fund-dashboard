@@ -128,7 +128,8 @@ def load_all_from_sheet(client: object,
     """
     out = {"ok": False, "refresh_only": refresh_only,
            "added": [], "kept": [], "removed": [], "reused": [],
-           "restored_ct": 0, "warnings": [], "error": None}
+           "restored_ct": 0, "reconciled_added": 0,
+           "warnings": [], "error": None}
     try:
         if oauth_mode:
             _pdf = load_all_policy_worksheets(client, sheet_id)
@@ -173,6 +174,20 @@ def load_all_from_sheet(client: object,
                         f"invest_twd 同步失敗（不影響資料正確性）：{str(_e_sync)[:80]}")
         except (PolicySheetError, OAuthError) as _e_ld:
             out["warnings"].append(f"_T7_State 讀回失敗：{str(_e_ld)[:120]}")
+
+        # v18.191：讀取齊全 — 保證每個帳本部位都有 portfolio_funds spine + 回填成本
+        # 基礎（avg_nav/fx_avg/units/含息成本）。修 user「讀取時帳本一直缺資料」：
+        # 保單分頁與 _T7_State 漂移時，只在快照裡的基金原本會看不到。
+        try:
+            from ui.helpers.portfolio_load import reconcile_funds_with_ledgers
+            _rec_funds, _n_added = reconcile_funds_with_ledgers(
+                ss.get("portfolio_funds", []), ss.get("t7_ledgers", {}))
+            ss["portfolio_funds"] = _rec_funds
+            out["reconciled_added"] = _n_added
+        except Exception as _e_rec:
+            out["warnings"].append(
+                f"帳本對帳失敗（不影響既有資料）：{str(_e_rec)[:80]}")
+
         out["ok"] = True
     except (PolicySheetError, OAuthError) as _pe:
         out["error"] = f"Sheet 操作失敗：{_pe}"

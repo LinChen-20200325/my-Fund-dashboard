@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.191 — 讀取齊全：讀回/還原時用帳本補齊 portfolio_funds spine + 回填成本（2026-05-24）
+
+- [x] **問題場景**（user）：「讀取資料時帳本一直缺資料，只要讀取齊全就好」
+- [x] **以 user 實際 JSON 備份驗證**：portfolio_funds(19) ⨝ t7_ledgers(19) pk **100% 對得上**、`Ledger.from_dict` 19/19 解析成功含完整成本（units/cost_unit/fx_avg/cost_unit_with_div）→ **JSON 還原本身是齊全的**。缺料發生在 Sheet 讀回：表單/帳本表都以 portfolio_funds 為主軸迭代、再用 `fund_pk_str` 取 t7_ledgers 成本；保單分頁（→portfolio_funds）與 `_T7_State`（→t7_ledgers）漂移時，只在快照裡的基金會「看不到」
+- [x] **Fix**：新增純函式 `reconcile_funds_with_ledgers(funds, t7_ledgers)`（`ui/helpers/portfolio_load.py`）—（1）帳本有但 portfolio_funds 沒有的部位→以 `parse_pk` 還原 (policy_id, code) 補成 spine 條目（loaded=False）（2）回填成本基礎 avg_nav/fx_avg/units/avg_nav_with_div（**缺值才補、不覆蓋既有**）。接 `load_all_from_sheet`（`_T7_State` 讀回後）與 `restore_from_json_bytes`（還原後）兩條讀取路徑；report 加 `reconciled_added`
+- [x] **實證**：模擬 Sheet 漂移（保單分頁只回 5/19）→ reconcile 後補回 14 檔、19 檔全有 spine + 成本（ACTI71: avg_nav=8.67/fx=32.35/units=1780.94/含息=6.9655）
+- [x] **驗證** AST PASS；ruff clean；新增 4 reconcile test；`test_portfolio_load + test_cloud_io + test_json_backup + test_app_smoke` 132 PASSED 零回歸
+
 ### v18.190 — log 降噪：Styler.applymap→map（pandas 3.0）+ 精準引擎資料不足降 debug（2026-05-24）
 
 - [x] **問題場景**（user Cloud log）：① `tab3_t7_ledger.py:1995` + `tab3_portfolio.py:2053` `Styler.applymap` FutureWarning（pandas 2.1 deprecate、3.0 移除）② `precision_service` 每次 rerun 刷「對齊後資料筆數不足 20（實際 0）」「宏觀數據筆數不足」WARNING
