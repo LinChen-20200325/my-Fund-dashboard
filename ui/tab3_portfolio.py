@@ -2171,8 +2171,21 @@ def _render_tab3_ai_summary(gemini_key: str) -> None:
         lines.extend(_div_lines)
 
     snapshot = "\n".join(lines)
+    # v18.196（Task3）：依組合「主資產類別」過濾既有新聞（不額外打網路）。
+    # 統計 loaded 各檔推得的類別，取最多數；混合/無法判別 → macro（不過濾）。
+    from repositories.news_repository import (  # noqa: PLC0415
+        infer_asset_class as _infer_ac,
+        filter_news_by_asset_class as _filter_news,
+    )
+    from collections import Counter as _Counter  # noqa: PLC0415
+    _cls_votes = _Counter(
+        _infer_ac(f"{f.get('name','')} {f.get('metrics',{}).get('category','')}")
+        for f in loaded)
+    _cls_votes.pop("macro", None)   # 多重資產不主導
+    _dom_cls = _cls_votes.most_common(1)[0][0] if _cls_votes else "macro"
+    _t3_news_all = st.session_state.get("news_items", []) or []
     headlines = [str(n.get("title", "") or n.get("headline", ""))
-                 for n in st.session_state.get("news_items", []) or []
+                 for n in _filter_news(_t3_news_all, _dom_cls)
                  if isinstance(n, dict)][:8]
     render_ai_summary_widget(
         tab_key="tab3",

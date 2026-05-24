@@ -430,6 +430,27 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AF Task3 AI 解盤補完：fetch_macro_news(asset_class) + 新聞依資產類別（v18.196 新增）
+
+**目標**（v5.0 Task3）：spec 要的「`fetch_macro_news(asset_class)` 接口 + 每 Tab AI 解盤接該資產類別新聞」。釐清：AI 解盤 widget（`render_ai_summary_widget`）早已在 Tab1/2/3，本次補的是**分類接口** + **新聞依該 Tab 資產類別過濾**。
+
+**新接口**（`repositories/news_repository.py`）：
+- `ASSET_CLASS_KEYWORDS`：stock / bond / fx / commodity / macro（macro=不過濾）。
+- `infer_asset_class(text)`：從基金名稱/類別字串推類別（偵測序 bond→stock→commodity→fx；多重資產/無法判別→macro）。
+- `filter_news_by_asset_class(news, asset_class)`：**純過濾既有清單、零網路**；systemic 永遠保留；過濾後空→回原清單；macro/未知→不過濾；吃中文別名（股/債/匯/原物料/總經）。
+- `fetch_macro_news(asset_class="", max_per_feed=5)`：spec 接口 = `fetch_market_news` + `filter_news_by_asset_class`。
+
+**接線（關鍵：用快取、不在 render 路徑重抓 RSS）**：
+- Tab2 `_render_tab2_ai_summary`：`infer_asset_class(基金名+類別)` → `filter_news_by_asset_class(session_state.news_items, cls)` 當 AI「新聞連動」headlines。
+- Tab3 `_render_tab3_ai_summary`：統計 loaded 各檔類別取最多數（混合→macro）→ 同樣過濾快取新聞。
+- Tab1：本身即總經 → macro（全部新聞），無需改。
+
+**效能**：UI 端只過濾已快取的 `news_items`（Tab1 抓一次），不重打網路；`fetch_macro_news` 僅供需主動抓取的場景。
+
+**驗證**：AST PASS、ruff clean、新增 6 test、114 PASSED 零回歸 + AppTest。
+
+---
+
 ### §3-AE Task2.2-step2b 組合 Tab 故事站標題（v18.195 新增）
 
 **發現（先讀 code，不盲搬）**：(1) 配置總覽核心（組合健康儀表 + 策略3 戰情室）**已在 Tab 頂部**（L154-193，loaded 時顯示）；(2) 自動讀回埋在頂部 Google-Sheets expander（L266），Streamlit 由上而下執行 → 中段顯示區塊**不能**搬到比該 expander 更高（否則首次 render 空白）；(3) 區段未乾淨切分（plumbing 與內容交錯）。故大區塊搬移風險高、報酬低、且沙箱無法驗證畫面。

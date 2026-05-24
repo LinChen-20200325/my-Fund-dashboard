@@ -1210,8 +1210,16 @@ def _render_tab2_ai_summary(gemini_key: str) -> None:
         if k in m and m[k] not in (None, ""):
             lines.append(f"- {k}：{m[k]}")
     snapshot = "\n".join(lines) if len(lines) > 1 else ""
+    # v18.196（Task3）：依「這檔基金的資產類別」過濾既有新聞（不額外打網路）。
+    from repositories.news_repository import (  # noqa: PLC0415
+        infer_asset_class as _infer_ac,
+        filter_news_by_asset_class as _filter_news,
+    )
+    _t2_cat = str(m.get("category", "") or fd.get("category", "") or "")
+    _t2_cls = _infer_ac(f"{name} {_t2_cat}")
+    _t2_news_all = st.session_state.get("news_items", []) or []
     headlines = [str(n.get("title", "") or n.get("headline", ""))
-                 for n in st.session_state.get("news_items", []) or []
+                 for n in _filter_news(_t2_news_all, _t2_cls)
                  if isinstance(n, dict)][:8]
     render_ai_summary_widget(
         tab_key="tab2",
