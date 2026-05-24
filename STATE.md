@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.193 — Task2.2-step1 故事化動線：tab 重排（總經→組合→單一）+ 敘事導覽列（2026-05-24）
+
+- [x] **目標**（v5.0 Task2.2）：讓介面順 spec 敘事閱讀「全球總經環境 → 核心/衛星配置 → 單一基金深掘」。**偏視覺、沙箱無法驗證畫面 → 分階段**，本次只做最高槓桿/低風險的 step1（tab 重排 + 導覽列），tab 內部大改排留作逐 tab 後續（需 user 看畫面回饋）
+- [x] **tab 重排**（`app.py`）：`st.tabs` 由 `總經→單一基金→組合→…` 改成 **`總經→組合→單一基金→資料診斷→說明書`**（原本單一基金在組合前、違反敘事）。變數改語意名 `tab_macro/tab_portfolio/tab_single`，with-block 依敘事順序排；render 函式不變。無 test 以 tab index 取用、smoke 全 exec app.py 通過
+- [x] **敘事導覽列**：新增 `ui/helpers/story_nav.py`（`story_nav_markdown` 純函式 + `render_story_nav(current)`）。三敘事 tab 標題下各加一行「① 🌐 總經環境 → ② 📊 核心/衛星配置 → ③ 🔍 單一基金深掘」，目前站藍色粗體 + 一句話提示，其餘灰色。純展示零資料依賴
+- [x] **邊界**：無效 current key → 不渲染；st.caption 色彩 markdown（`:blue[]`/`:gray[]`）不支援時退純文字。**效能**：純靜態字串 O(1)
+- [x] **驗證** AST PASS；ruff clean（新檔）；新增 `test_story_nav.py` 4 test（highlight/三站齊全/無效 key/順序）；`test_story_nav + test_app_smoke` 99 PASSED（含 full app.py exec）；AppTest 渲染驗證
+
 ### v18.192 — Task2.1 教學化：量化指標加「💡 這代表什麼」白話文 expander（2026-05-24）
 
 - [x] **目標**（v5.0 Task2.1）：新手看得懂、老手有深度，**不藏任何專業數據**——複雜指標旁加收合 expander，白話解釋 + 資產配置實戰意義

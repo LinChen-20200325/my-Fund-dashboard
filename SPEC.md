@@ -430,6 +430,22 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AC Task2.2-step1 故事化動線：tab 重排 + 敘事導覽列（v18.193 新增）
+
+**目標**（v5.0 Task2「故事化排版」）：讓使用者順著「全球總經環境 → 核心/衛星資產配置 → 單一基金深掘」閱讀。此重構偏視覺、沙箱無法驗證畫面 → **分階段**；本次做最高槓桿/低風險的 step1，tab 內部區塊重排留作逐 tab 後續（需 user 視覺回饋）。
+
+**tab 重排**（`app.py`）：`st.tabs` 由 `🌐 總經 → 🔍 單一基金 → 📊 組合基金 → …` 改為 **`🌐 總經 → 📊 組合基金 → 🔍 單一基金 → 🔬 資料診斷 → 📖 說明書`**（原本單一基金在組合之前，違反敘事順序）。變數改語意名 `tab_macro/tab_portfolio/tab_single`，with-block 依敘事順序排列；**render 函式完全不動**。確認無任何 test 以 tab index 取用、smoke 全 exec app.py 通過。
+
+**敘事導覽列**：新增 `ui/helpers/story_nav.py`：
+- `story_nav_markdown(current)` 純函式（組麵包屑、目前站 `**:blue[]**` highlight + 一句話提示、其餘 `:gray[]`、無效 key 不 highlight）→ 可單元測試。
+- `render_story_nav(current)` 在三敘事 tab 標題下以 `st.caption` 渲染（無效 key 不渲染）。
+
+**邊界**：無效 current → 不渲染；色彩 markdown 不支援時退純文字。**效能**：純靜態 O(1)。
+
+**驗證**：AST PASS、ruff clean、新增 4 test、99 PASSED（含 full app.py exec）+ AppTest 渲染。
+
+---
+
 ### §3-AB Task2.1 教學化：量化指標白話文 expander（v18.192 新增）
 
 **目標**（v5.0 Task2「新手視角，老手深度」）：複雜量化指標旁加 `st.expander("💡 這些數據代表什麼？")`，用白話文解釋指標 + 資產配置實戰意義；**不隱藏、不移動任何既有專業數據**（純加法、收合預設）。
