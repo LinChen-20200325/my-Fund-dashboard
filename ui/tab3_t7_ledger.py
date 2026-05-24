@@ -1912,13 +1912,15 @@ def render_t7_section() -> None:
                                 "代碼": _c, "基金名稱": _name_short,
                                 "幣別": _f.get("currency", "USD"),
                                 "持有單位": "—",
-                                "平均買入淨值 NAV": "—", "平均買入匯率": "—",
+                                "平均買入淨值 NAV": "—", "含息成本": "—",
+                                "平均買入匯率": "—",
                                 "最新 NAV": f"{_nav:.4f}" if _nav else "—",
                                 "最新 FX": f"{_fx:.4f}" if _fx else "—",
                                 "成本基礎 (TWD)": "—",
                                 "市值 (TWD)": "—",
                                 "未實現損益 (TWD)": "—",
                                 "未實現損益 %": "—",
+                                "累積已配息率": "—",
                                 "配息率": f"{_dy:.2f}%" if _dy else "—",
                                 "預估月配息 (TWD)": "—",
                                 # v18.172：與 normal branch 對齊欄位
@@ -1941,12 +1943,20 @@ def render_t7_section() -> None:
                         _reinvest_total_twd += _ann_reinv
                         _pl_str = f"NT${_pl_twd:+,.0f}"
                         _pl_pct_str = f"{_pl_pct:+.2f}%"
+                        # v18.184：累積已配息率 = (平均買入淨值 − 含息成本)/平均買入淨值，
+                        # 代表成本已透過配息回收幾%（含息成本 < 淨值成本時才有意義）。
+                        _cu0 = _l.position.cost_unit
+                        _cuwd = _l.position.cost_unit_with_div
+                        _div_rec_pct = (((_cu0 - _cuwd) / _cu0 * 100.0)
+                                        if (_cu0 > 0 and 0 < _cuwd < _cu0) else None)
                         _snap_rows.append({
                             "保單": _pid_disp,
                             "代碼": _c, "基金名稱": _name_short,
                             "幣別": _l.currency,
                             "持有單位": f"{_l.position.units:,.4f}",
                             "平均買入淨值 NAV": f"{_l.position.cost_unit:.4f}",
+                            "含息成本": (f"{_cuwd:.4f}"
+                                       if (_cuwd and _cuwd < _cu0) else "—"),
                             "平均買入匯率": f"{_l.position.fx_avg:.4f}",
                             "最新 NAV": f"{_nav:.4f}" if _nav else "—",
                             "最新 FX": f"{_fx:.4f}" if _fx else "—",
@@ -1954,6 +1964,8 @@ def render_t7_section() -> None:
                             "市值 (TWD)": f"NT${_v:,.0f}",
                             "未實現損益 (TWD)": _pl_str,
                             "未實現損益 %": _pl_pct_str,
+                            "累積已配息率": (f"{_div_rec_pct:.2f}%"
+                                          if _div_rec_pct is not None else "—"),
                             "配息率": f"{_dy:.2f}%",
                             # v18.172：拆「月現金 / 月配股」兩欄；舊「預估月配息」改用現金部分
                             # v18.173：配股欄位再加「可換單位數」= TWD ÷ FX ÷ NAV
@@ -1981,7 +1993,9 @@ def render_t7_section() -> None:
                             return ""
                         try:
                             _styled = _df_snap.style.applymap(
-                                _color_pl, subset=["未實現損益 (TWD)", "未實現損益 %"]
+                                _color_pl,
+                                subset=["未實現損益 (TWD)", "未實現損益 %",
+                                        "累積已配息率"]
                             )
                             st.dataframe(_styled, use_container_width=True,
                                          hide_index=True)

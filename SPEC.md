@@ -430,6 +430,22 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-U T7 持倉明細表加「含息成本 + 累積已配息率」欄（v18.184 新增）
+
+**問題場景**（user）：①「含息來源沒在存檔（Google Sheet / JSON）」；②「之前說含息來源有資料就能算含息率，但分析資料沒看到」。
+
+**釐清**：
+- 「含息來源」是表單上的 **A/B 輸入方式**（A 直接抄對帳單欄(10) 含息成本 / B 用累積配息反推），它本身不持久化（user 同意不存）；真正持久化的是**結果含息成本** `avg_nav_with_div`（JSON v18.180 / 保單分頁 v18.183 / ledger `cost_unit_with_div` v18.180 皆已存）。
+- 真正的 gap：`cost_unit_with_div` 一直被收集 + 存檔，但**從沒在任何顯示分析中使用**（dangling input）。app 內唯一的「含息報酬率」來自 MoneyDJ 基金層市場資料（tab6 手冊 / tab5），與 user 對帳單含息成本無關。
+
+**Fix（user 選「累積已配息率」、不需即時 NAV）**：T7 持倉明細表（`tab3_t7_ledger.py` `_snap_rows`）新增兩欄：
+- **含息成本** = `position.cost_unit_with_div`（含息成本 < 淨值成本時顯示，否則「—」）。
+- **累積已配息率** = (平均買入淨值 − 含息成本) / 平均買入淨值 × 100%，代表成本已透過配息回收幾%（例 ACTI71 = (8.67−6.9655)/8.67 = 19.66%）。純成本面、不依賴即時 NAV；未填含息成本（`cuwd >= cu0`）顯「—」。併入紅綠著色 subset；units≤0 分支同步補欄保持 DataFrame 對齊。
+
+純顯示層改動，`test_app_smoke + test_fund_ledger + test_tab3_portfolio` 共 128 PASSED 零回歸。
+
+---
+
 ### §3-T div_cash_pct/avg_nav_with_div 加進 v1 保單分頁 schema（v18.183 新增）
 
 **問題場景**（user）：「div_cash_pct 存檔不在 google sheet」。前情：v18.180 已把 `div_cash_pct`/`avg_nav_with_div` 補進 JSON 備份、v18.182 補進 `_持倉總覽` 顯示分頁，但 **v1 保單分頁本身（user 實際讀寫、`全部讀回` 的來源）沒有這兩欄**。

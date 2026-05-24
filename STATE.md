@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.184 — T7 持倉明細表加「含息成本 + 累積已配息率」欄（dangling input 終於被用）（2026-05-23）
+
+- [x] **問題場景**（user）：①「含息來源沒在存檔（Sheet/JSON）」②「之前說含息來源有資料可算含息率，但分析資料沒看到」
+- [x] **釐清 Point1**：「含息來源」是 A/B **輸入方式**（A 直接抄含息成本 / B 累積配息反推），本身不持久化（user 同意不存）；它的**結果含息成本(`avg_nav_with_div`)有存**（JSON v18.180 / 保單分頁 v18.183 / ledger `cost_unit_with_div` v18.180）
+- [x] **釐清 Point2（真 gap）**：`cost_unit_with_div` 一直被收集+存檔但**從沒在任何顯示分析用過**（dangling input）；app 內唯一「含息報酬率」來自 MoneyDJ 基金層資料、非 user 對帳單含息成本
+- [x] **Fix（user 選「累積已配息率」）**：T7 持倉明細表（`tab3_t7_ledger.py` `_snap_rows`）新增兩欄 — 「含息成本」(`cost_unit_with_div`) + 「累積已配息率」= (平均買入淨值 − 含息成本)/平均買入淨值（純成本面、不需即時 NAV）。含息成本未填（`cuwd>=cu0`）顯示「—」；累積已配息率併入綠色著色 subset。units≤0 分支同步補兩欄保持對齊
+- [x] **邊界**：QL19676552 那幾檔含息成本=淨值（未填）→ 兩欄顯「—」正確；ACTI71=(8.67−6.9655)/8.67=19.66%
+- [x] **驗證** AST PASS；`test_app_smoke + test_fund_ledger + test_tab3_portfolio` 共 **128 PASSED** 零回歸（純顯示層、無新測試需求）
+
 ### v18.183 — div_cash_pct/avg_nav_with_div 加進 v1 保單分頁 schema（存進 Sheet + 讀回不掉）（2026-05-23）
 
 - [x] **問題場景**（user）：「div_cash_pct 存檔不在 google sheet」。釐清：v1 保單分頁 `ALL_COLS` 只有 invest_twd/policy_tier 等，**無 div_cash_pct/avg_nav_with_div 欄** → 從不寫進保單分頁、且「全部讀回」會歸零（只有 JSON 備份留得住）。v2 schema 早有這兩欄、但 user 走 v1+T7 流程
