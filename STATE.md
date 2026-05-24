@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.203 — 程式碼健康度：修 fund_repository 3 個潛伏 NameError/UnboundLocal（2026-05-24）
+
+- [x] **背景**（user 選「健康度清理」）：ruff F821 掃出 fund_repository 多個「未定義名稱」，逐一查證皆為**潛伏 bug**（靠 `and` 短路或 try/except 遮蔽、只在 edge case 觸發、平時不發作）
+- [x] **#1 缺 `import re`**：13 處 HTML 解析 `re.findall/search/sub`（L3358-4146 抓基金頁）所在函式無 local import → 被呼叫時 NameError → 解析靜默失敗。修：模組層加 `import re`
+- [x] **#2 缺 `import requests`**：3 處 proxy-aware `requests.get`（L341/406/434）→ NameError → 落 fallback。修：模組層加 `import requests`（呼叫本就帶 `proxies=_proxies()`，活化後即走 proxy）
+- [x] **#3 `_is_insurance_code` use-before-assign**：`_fetch_fund_single` 內 nav<10 短資料 fallback（L2484+）引用此變數，但賦值在 L2581（後面）→ 短資料時 **UnboundLocalError**（正中「查無資料/新基金/抓取失敗」edge case）。修：提前到函式開頭（`_code` 後）計算一次、移除後面重複賦值
+- [x] **CI 註**：`test_app_apptest` 為 `@pytest.mark.slow`、不在 fast lane（pr-check fast）；其 yfinance 403 是沙箱「Host not in allowlist」網路限制（GitHub Actions slow lane 有網路），非程式 bug、無需 mock
+- [x] **驗證** AST PASS；ruff F821 fund_repository **0**（原 ≥13）；correct-order import OK；新增 import-guard test；`pytest -m "not slow"` 598 passed / 1 skipped 零回歸
+
 ### v18.202 — NAV 快取代碼自動彙整：self-heal（既有 cache）+ Sheet 選用同步（2026-05-24）
 
 - [x] **痛點**（user backlog）：`scripts/fetch_nav_cache.py` 的 `FUND_CODES` 寫死 → 新增基金忘了補 → 無 cache → T5 相關係數/歷史 NAV 算不出

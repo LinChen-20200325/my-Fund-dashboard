@@ -177,3 +177,12 @@ def test_fund_repository_fx_nav_use_chart_api_not_direct_yfinance():
     src = pathlib.Path("repositories/fund_repository.py").read_text(encoding="utf-8")
     assert "yf.Ticker" not in src, "fund_repository 不應再直連 yf.Ticker"
     assert src.count("fetch_yf_close") >= 2, "FX + NAV 應都走 fetch_yf_close（Chart API）"
+
+
+def test_fund_repository_has_re_and_requests_module_imported():
+    """v18.203：re / requests 必須在 fund_repository 模組層 import — 原本缺，導致
+    多處 HTML 解析（re.findall）與 requests.get fetch 路徑被呼叫時 NameError→靜默失敗。"""
+    import fund_fetcher  # noqa: F401  先載解 circular
+    import repositories.fund_repository as fr
+    assert getattr(fr, "re", None) is not None, "fund_repository 缺 import re"
+    assert getattr(fr, "requests", None) is not None, "fund_repository 缺 import requests"
