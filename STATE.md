@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.206 — 個股新聞面升級：逐股 Google News 搜尋（按鈕）取代「濾廣義新聞」（2026-05-24）
+
+- [x] **問題**（user 截圖）：v18.205 的 個股新聞面「命中持股 0 則」——因為只**過濾既有廣義 RSS 新聞**，台股/債券/冷門持股本就難命中（user：個股新聞沒看到）
+- [x] **Fix（user 選 Google News 逐股搜尋）**：新增 `repositories/news_repository.py:fetch_stock_news(query, max_items)` — 用 **Google News RSS 搜尋**（`news.google.com/rss/search?q=...&hl=zh-TW&gl=TW`）走 `infra.proxy.fetch_url` + feedparser 解析；中文/英文持股名都抓得到、回該股近期新聞
+- [x] **Tab2 改按鈕觸發**：📰 個股新聞面 expander 內加「📡 抓個股新聞」按鈕 → 對前 6 大持股（中文名優先）各查 Google News（progress bar）→ 結果存 `session_state[_stknews_{fund}]`（重整不重抓）→ 顯示真實個股新聞（標注持股/來源/連結）；命中時 expander **外**（避巢狀）掛 AI 新聞面分析。未抓時提示點按鈕、抓完無果友善提示
+- [x] **設計**：逐股 = N 次網路 → 按鈕觸發（不自動拖慢）+ session 快取；top 6 限制呼叫數；feedparser 解析 bytes（不裸連）
+- [x] **驗證** AST PASS；ruff clean；新增 4 test（解析/空 query/抓取失敗/max_items）；`pytest -m "not slow"` 606 passed / 1 skipped 零回歸；Tab2 AppTest 渲染驗證。沙箱擋 Google → 抓取本身須真機/proxy 驗
+
 ### v18.205 — 單一基金加「📰 個股新聞面」：持股名匹配新聞 + AI 新聞面分析（2026-05-24）
 
 - [x] **需求**（user）：單一基金想多加「個股新聞面分析」（針對基金持有的個股）

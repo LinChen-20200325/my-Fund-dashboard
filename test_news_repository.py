@@ -157,3 +157,42 @@ def test_filter_news_by_keywords_no_match_no_fallback():
     """個股無命中 → 回空（不像 asset_class 會 fallback 全部）。"""
     news = [{"title": "Fed holds rates", "summary": "macro", "is_systemic": False}]
     assert filter_news_by_keywords(news, ["NVIDIA"]) == []
+
+
+# ── v18.206 個股新聞：fetch_stock_news（Google News RSS via proxy）──
+
+def test_fetch_stock_news_parses_entries():
+    import repositories.news_repository as nr
+    fake = _fake_feedparser([
+        _entry("台積電法說會超預期", "半導體"),
+        _entry("台積電擴廠計畫", ""),
+    ])
+    with patch.dict(sys.modules, {"feedparser": fake}), \
+         patch("infra.proxy.fetch_url", return_value=_Resp()):
+        out = nr.fetch_stock_news("台積電", max_items=3)
+    assert len(out) == 2
+    assert out[0]["title"].startswith("台積電")
+    assert out[0]["url"].startswith("http")
+    assert out[0]["source"]            # 預設 Google News
+
+
+def test_fetch_stock_news_empty_query_returns_empty():
+    import repositories.news_repository as nr
+    assert nr.fetch_stock_news("") == []
+    assert nr.fetch_stock_news("  ") == []
+
+
+def test_fetch_stock_news_fetch_fail_returns_empty():
+    import repositories.news_repository as nr
+    with patch.dict(sys.modules, {"feedparser": _fake_feedparser([])}), \
+         patch("infra.proxy.fetch_url", return_value=None):
+        assert nr.fetch_stock_news("台積電") == []
+
+
+def test_fetch_stock_news_respects_max_items():
+    import repositories.news_repository as nr
+    fake = _fake_feedparser([_entry(f"新聞{i}") for i in range(10)])
+    with patch.dict(sys.modules, {"feedparser": fake}), \
+         patch("infra.proxy.fetch_url", return_value=_Resp()):
+        out = nr.fetch_stock_news("某股", max_items=3)
+    assert len(out) == 3

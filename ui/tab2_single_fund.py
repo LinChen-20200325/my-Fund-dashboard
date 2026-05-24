@@ -1084,62 +1084,79 @@ def render_single_fund_tab() -> None:
                                         f"<span style='color:#58a6ff;font-weight:700;font-size:11px;width:36px;text-align:right'>{_tp:.1f}%</span>"
                                         f"</div>", unsafe_allow_html=True)
 
-                # ── 📰 個股新聞面（v18.205）：前10大持股名匹配快取新聞 + AI 新聞面分析 ──
+                # ── 📰 個股新聞面（v18.206）：逐股 Google News 搜尋（按鈕）+ AI 新聞面分析 ──
                 if _tops:
                     from repositories.news_repository import (  # noqa: PLC0415
-                        filter_news_by_keywords as _filt_kw,
+                        fetch_stock_news as _fetch_stk,
                     )
-                    _news_all_sn = st.session_state.get("news_items", []) or []
-                    _stk_matches = []          # (持股顯示名, news dict)
-                    _seen_sn_titles: set = set()
-                    for _topn in _tops[:10]:
+                    _fund_key_sn = str(fk or name or "fund")[:40]
+                    _ss_stk = f"_stknews_{_fund_key_sn}"
+                    _hold_list = []   # (顯示名, 查詢字)
+                    for _topn in _tops[:6]:
                         _nm = str(_topn.get("name", "")).strip()
                         if not _nm:
                             continue
                         _zh = _zh_holding(_nm)
-                        _kws = [k for k in (_nm, _zh) if k and len(str(k)) >= 2]
-                        _toks = _nm.replace(",", " ").split()
-                        if _toks and len(_toks[0]) >= 3:
-                            _kws.append(_toks[0])   # 英文公司名首段 token
-                        _disp_nm = _zh or _nm[:20]
-                        for _hit in _filt_kw(_news_all_sn, _kws):
-                            _ttl = _hit.get("title", "")
-                            if _ttl and _ttl not in _seen_sn_titles:
-                                _seen_sn_titles.add(_ttl)
-                                _stk_matches.append((_disp_nm, _hit))
-                    with st.expander(f"📰 個股新聞面（命中持股 {len(_stk_matches)} 則）",
-                                     expanded=bool(_stk_matches)):
-                        if not _stk_matches:
-                            st.caption("近期國際財經新聞暫無直接提及本基金前10大持股"
-                                       "（通常大型權值股才較常被 RSS 報導）。")
-                        for _disp_nm, _hit in _stk_matches[:12]:
-                            _sys_ic = "🚨 " if _hit.get("is_systemic") else ""
-                            _u = _hit.get("url", "")
-                            _ttl = _hit.get("title", "")
-                            _src = _hit.get("source", "")
-                            _ttl_html = (f"<a href='{_u}' target='_blank' "
-                                         f"style='color:#58a6ff;text-decoration:none'>{_ttl}</a>"
-                                         if _u else _ttl)
-                            st.markdown(
-                                f"<div style='padding:4px 8px;background:#161b22;border-radius:6px;"
-                                f"margin:2px 0;font-size:12px'>"
-                                f"<span style='color:#ffb74d;font-weight:700'>{_disp_nm}</span>　"
-                                f"{_sys_ic}{_ttl_html}"
-                                f"<span style='color:#666;font-size:10px;margin-left:6px'>{_src}</span>"
-                                f"</div>", unsafe_allow_html=True)
+                        _hold_list.append((_zh or _nm[:20], _zh or _nm))
+                    with st.expander(f"📰 個股新聞面（前 {len(_hold_list)} 大持股）",
+                                     expanded=False):
+                        _snc1, _snc2 = st.columns([3, 1])
+                        _snc1.caption("逐一搜尋 Google News（中文，走 NAS proxy）。"
+                                      "廣義 RSS 常抓不到台股/冷門股，此按鈕直接針對每檔持股搜尋。")
+                        _do_fetch = _snc2.button(
+                            "📡 抓個股新聞", key=f"btn_stknews_{_fund_key_sn}",
+                            use_container_width=True)
+                        if _do_fetch:
+                            _fetched: dict = {}
+                            _prog = st.progress(0.0)
+                            for _ci, (_disp, _q) in enumerate(_hold_list):
+                                try:
+                                    _items = _fetch_stk(_q, max_items=3)
+                                except Exception:
+                                    _items = []
+                                if _items:
+                                    _fetched[_disp] = _items
+                                _prog.progress((_ci + 1) / max(len(_hold_list), 1))
+                            _prog.empty()
+                            st.session_state[_ss_stk] = _fetched
+                        _stk_data = st.session_state.get(_ss_stk)
+                        if _stk_data:
+                            _tot = sum(len(v) for v in _stk_data.values())
+                            st.caption(f"共 {_tot} 則個股新聞（{len(_stk_data)} 檔持股命中）")
+                            for _disp_nm, _items in _stk_data.items():
+                                for _it in _items:
+                                    _u = _it.get("url", "")
+                                    _ttl = _it.get("title", "")
+                                    _src = _it.get("source", "")
+                                    _lh = (f"<a href='{_u}' target='_blank' "
+                                           f"style='color:#58a6ff;text-decoration:none'>{_ttl}</a>"
+                                           if _u else _ttl)
+                                    st.markdown(
+                                        f"<div style='padding:4px 8px;background:#161b22;"
+                                        f"border-radius:6px;margin:2px 0;font-size:12px'>"
+                                        f"<span style='color:#ffb74d;font-weight:700'>{_disp_nm}</span>　"
+                                        f"{_lh}<span style='color:#666;font-size:10px;"
+                                        f"margin-left:6px'>{_src}</span></div>",
+                                        unsafe_allow_html=True)
+                        elif _do_fetch:
+                            st.caption("逐股搜尋後仍無結果（可能 NAS Proxy 斷線，"
+                                       "或這些持股近期無中文新聞）。")
+                        else:
+                            st.caption("👆 點「📡 抓個股新聞」開始逐股搜尋。")
                     # AI 新聞面分析（放 expander 外，避免巢狀 expander crash）
-                    if _stk_matches:
+                    _stk_data = st.session_state.get(_ss_stk) or {}
+                    if _stk_data:
                         from ui.helpers.ai_summary import render_ai_summary_widget  # noqa: PLC0415
+                        _flat = [(d, it) for d, items in _stk_data.items() for it in items]
                         _sn_snap = [f"## 個股新聞面快照：{name or fk}",
-                                    "- 前10大持股：" + "、".join(
-                                        str(_t.get('name', ''))[:18] for _t in _tops[:10])]
-                        for _disp_nm, _hit in _stk_matches[:12]:
-                            _sn_snap.append(f"- [{_disp_nm}] {_hit.get('title', '')}")
+                                    "- 持股：" + "、".join(_stk_data.keys())]
+                        for _disp_nm, _it in _flat[:15]:
+                            _sn_snap.append(f"- [{_disp_nm}] {_it.get('title', '')}")
                         render_ai_summary_widget(
                             tab_key="tab2_stknews",
                             tab_label=f"個股新聞面（{name or fk}）",
                             snapshot="\n".join(_sn_snap),
-                            headlines=[_h.get("title", "") for _d, _h in _stk_matches[:12]],
+                            headlines=[it.get("title", "") for _d, it in _flat[:15]],
                             gemini_api_key=GEMINI_KEY,
                         )
 
