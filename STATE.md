@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.198 — 保單分頁「存全」：avg_nav/fx_avg/units 加進 schema（寫入端從 t7_ledgers 帶）（2026-05-24）
+
+- [x] **動機**（user 痛點）：「存檔資料沒有全部」——v1 保單分頁只有 invest_twd/含息成本/現金給付%，**缺平均買入淨值 avg_nav / 平均買入匯率 fx_avg / 單位數 units**（這三個成本基礎只在 `_T7_State` blob 與 `_持倉總覽`）。v18.191 只補了讀取端（用帳本回填記憶體），寫入端的保單分頁仍是半套
+- [x] **Schema**（`repositories/policy_repository.py`）：`OPTIONAL_COLS` 尾端純追加 `avg_nav` / `fx_avg` / `units`（ALL_COLS 11→14；表頭升級範圍自動 A1:K1→A1:N1，既有 11 欄表頭下次 upsert 自動升級、舊資料列尾端補空不錯位，與 v18.183 同模式）
+- [x] **寫入**：`dump_all_to_sheet`（全部寫入）與 T7「套用起始部位」upsert 兩條路徑——成本基礎**優先取 `t7_ledgers[pk].position`（cost_unit/fx_avg/units），缺則退 portfolio_funds**；T7 表單 submit 也把 `_cu/_fx/_u` 寫進 `portfolio_funds`（供 dump + JSON）
+- [x] **讀回**：`sync_policies_to_portfolio_funds` 把 avg_nav/fx_avg/units 讀回 portfolio_funds（**有值才帶、空欄不覆蓋記憶體**）。配合 v18.191 reconcile → 讀取端雙保險
+- [x] **驗證** AST PASS；ruff clean；新增 3 test（sync 讀回 / sync 空欄不覆蓋 / dump 從 ledgers 帶成本）；既有 test 因用 `list(ALL_COLS)`/`len(ALL_COLS)` 自動相容；`pytest -m "not slow"` 全綠 **595 passed / 1 skipped**；AppTest 渲染驗證
+- [ ] **真機驗收**：部署後「全部寫入」→ 保單分頁應出現英文欄 `avg_nav`/`fx_avg`/`units`（M/N… 區）且有值；讀回不掉
+
 ### v18.197 — hotfix「全部讀回」ValueError（reuse series 真值判斷）+ v5.0 收尾驗收（2026-05-24）
 
 - [x] **user 阻斷 bug**：按「立即全部讀回」→ `❌ [ValueError] The truth value of a Series is ambiguous`，讀取直接失敗

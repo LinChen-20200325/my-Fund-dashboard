@@ -142,6 +142,28 @@ def test_dump_all_to_sheet_surfaces_per_fund_write_failure(monkeypatch):
     assert "P1/F1" in out["warnings"][0]
 
 
+def test_dump_pulls_cost_basis_from_ledgers_v198(monkeypatch):
+    """v18.198：保單分頁寫入時，avg_nav/fx_avg/units 從 t7_ledgers 帶出。"""
+    import types
+
+    from ui.helpers import cloud_io
+    captured: list = []
+    monkeypatch.setattr(cloud_io, "upsert_fund_in_policy",
+                         lambda c, s, pid, row: captured.append(row))
+    monkeypatch.setattr(cloud_io, "save_all_ledgers_snapshot", lambda *a, **k: 0)
+    monkeypatch.setattr(cloud_io, "save_holdings_overview", lambda *a, **k: 0)
+
+    _pos = types.SimpleNamespace(cost_unit=8.67, fx_avg=32.35, units=1780.94)
+    _led = types.SimpleNamespace(position=_pos)
+    ss = {"portfolio_funds": [{"code": "ACTI71", "policy_id": "P1", "invest_twd": 1}],
+          "t7_ledgers": {"P1::ACTI71": _led}}
+    out = cloud_io.dump_all_to_sheet("c", "s", ss)
+    assert out["ok"] is True
+    assert captured[0]["avg_nav"] == 8.67
+    assert captured[0]["fx_avg"] == 32.35
+    assert captured[0]["units"] == 1780.94
+
+
 # ──────────────────────────────────────────────────────────────────
 # load_all_from_sheet
 # ──────────────────────────────────────────────────────────────────

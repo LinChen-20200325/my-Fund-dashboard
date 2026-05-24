@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.198 / 2026-05-24** — 保單分頁「存全」。痛點「存檔資料沒有全部」：v1 保單分頁缺成本基礎（avg_nav/fx_avg/units，只在 `_T7_State`/`_持倉總覽`）。`OPTIONAL_COLS` 純追加 `avg_nav`/`fx_avg`/`units`（ALL_COLS 11→14、表頭升級自動 A1:N1）。寫入（`dump_all_to_sheet` + T7 套用）成本基礎優先取 `t7_ledgers[pk].position`、缺退 portfolio_funds；T7 submit 也把 cost 寫進 portfolio_funds。讀回 `sync_policies_to_portfolio_funds` 帶 avg_nav/fx_avg/units（有值才帶、空欄不覆蓋），配合 v18.191 reconcile 雙保險。既有 test 因用 `list(ALL_COLS)` 自動相容；新增 3 test，595 passed。
+
 > 🆕 **v18.197 / 2026-05-24** — hotfix「全部讀回」ValueError + v5.0 收尾驗收。user 按讀回 → `ValueError: truth value of a Series is ambiguous`。根因（v18.185 潛伏）：`reuse_fund_info_by_code` 的 `if v not in (None, "")` 對 `series`（pandas Series）做相等判斷 → 回 Series → bool() 爆。Fix：逐欄判斷（None 跳過、空字串才跳過、series/dict/list 直接複製）+ 加真 pd.Series 回歸 test。收尾驗收跑 `pytest -m "not slow"` 抓到 2 個潛伏失敗：`test_tab6_manual` 仍假設 8 sub-tabs（Tab6 早已 10）→ 修 test expect 10。全綠 592 passed / 1 skipped。
 
 > 🆕 **v18.196 / 2026-05-24** — Task3 AI 解盤補完。`repositories/news_repository.py` 加 `ASSET_CLASS_KEYWORDS` + `infer_asset_class(text)` + `filter_news_by_asset_class(news, cls)`（純過濾、零網路、systemic 永留、空回退、中文別名）+ `fetch_macro_news(asset_class, max_per_feed)`（spec 接口 = fetch_market_news + filter）。接線：Tab2 AI 摘要依該基金類別、Tab3 依組合主類別過濾**已快取**的 `session_state.news_items`（不在 render 路徑重抓 RSS）；Tab1 本即總經=macro（不過濾），無需改。AI widget 本就在 Tab1/2/3，本次補的是「新聞依資產類別」。新增 6 test，114 PASSED。

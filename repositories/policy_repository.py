@@ -46,6 +46,11 @@ OPTIONAL_COLS: tuple[str, ...] = (
     "policy_tier",       # "core" / "satellite" / ""，控制保單級配置統計
     "div_cash_pct",      # v18.183: 配息現金給付% (0~100)
     "avg_nav_with_div",  # v18.183: 平均買入含息單位成本（對帳單欄(10)）
+    # v18.198：把完整成本基礎也存進保單分頁（寫入時從 t7_ledgers 帶出），讓保單分頁
+    # 自成完整、不再「存檔資料沒有全部」（原本這三欄只在 _T7_State / _持倉總覽）。
+    "avg_nav",           # v18.198: 平均買入淨值（cost_unit）
+    "fx_avg",            # v18.198: 平均買入匯率（fx_avg）
+    "units",             # v18.198: 持有單位數
 )
 
 ALL_COLS: tuple[str, ...] = REQUIRED_COLS + OPTIONAL_COLS
@@ -407,6 +412,11 @@ def sync_policies_to_portfolio_funds(
                 _anw_raw = row.get("avg_nav_with_div", "")
                 if str(_anw_raw).strip() != "":
                     aggregated[pk]["avg_nav_with_div"] = _normalize_float(_anw_raw, 0.0)
+                # v18.198：avg_nav / fx_avg / units 也讀回（有值才帶，空欄不覆蓋）
+                for _extra in ("avg_nav", "fx_avg", "units"):
+                    _ex_raw = row.get(_extra, "")
+                    if str(_ex_raw).strip() != "":
+                        aggregated[pk][_extra] = _normalize_float(_ex_raw, 0.0)
 
     added, kept = [], []
     merged: list[dict] = []
