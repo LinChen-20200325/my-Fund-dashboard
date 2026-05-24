@@ -163,3 +163,84 @@ def fetch_market_news(max_per_feed: int = 5) -> list:
         key=lambda x: x.get("published", ""), reverse=True,
     )
     return (sys_news + gen_news)[:30]
+
+
+# ══════════════════════════════════════════════════════════════════════
+# v18.196（v5.0 Task3）：依資產類別過濾新聞
+#   - fetch_macro_news(asset_class)：spec 接口 — 抓 + 依類別過濾（會打網路）
+#   - filter_news_by_asset_class()：純過濾既有清單（給 UI 過濾 session 快取、零網路）
+#   - infer_asset_class()：從基金名稱/類別字串推資產類別
+# ══════════════════════════════════════════════════════════════════════
+
+# 資產類別 → 命中關鍵字（大小寫不敏感）。空清單（macro/all）= 不過濾。
+ASSET_CLASS_KEYWORDS: dict = {
+    "stock": ["stock", "equity", "equities", "s&p", "nasdaq", "dow", "shares",
+              "earnings", "ipo", "股", "股市", "股票", "台股", "美股", "權值"],
+    "bond": ["bond", "treasury", "yield", "credit", "duration", "coupon",
+             "債", "債券", "公債", "殖利率", "利差", "固定收益", "投資等級", "高收益"],
+    "fx": ["currency", "dollar", "yen", "euro", "forex", "exchange rate",
+           "美元", "日圓", "歐元", "新台幣", "匯率", "貶值", "升值"],
+    "commodity": ["oil", "crude", "brent", "wti", "gold", "copper", "commodity",
+                  "commodities", "metals", "原油", "黃金", "原物料", "大宗商品", "能源"],
+    "macro": [],   # 總經 / 全部 — 不過濾
+}
+
+# 推類別時的偵測順序（多重資產 → 命不中任一 → 落 macro）
+_CLASS_ORDER = ("bond", "stock", "commodity", "fx")
+
+
+def _normalize_asset_class(asset_class: str) -> str:
+    """中文/英文/同義詞 → 標準 key（未知或總經 → 'macro'）。"""
+    a = str(asset_class or "").strip().lower()
+    if a in ASSET_CLASS_KEYWORDS:
+        return a
+    alias = {
+        "股票": "stock", "股": "stock", "equity": "stock",
+        "債券": "bond", "債": "bond", "fixed income": "bond",
+        "匯率": "fx", "匯": "fx", "currency": "fx",
+        "原物料": "commodity", "商品": "commodity", "能源": "commodity",
+        "總經": "macro", "all": "macro", "": "macro",
+    }
+    return alias.get(a, "macro")
+
+
+def infer_asset_class(text: str) -> str:
+    """從基金名稱/類別字串推資產類別；多重資產或無法判別 → 'macro'。"""
+    t = str(text or "").lower()
+    if not t:
+        return "macro"
+    for cls in _CLASS_ORDER:
+        if any(kw.lower() in t for kw in ASSET_CLASS_KEYWORDS[cls]):
+            return cls
+    return "macro"
+
+
+def filter_news_by_asset_class(news: list, asset_class: str) -> list:
+    """純過濾既有新聞清單（不打網路）。systemic 永遠保留；
+    過濾後若為空則回原清單（有總比沒有好）。macro/未知 → 不過濾。"""
+    cls = _normalize_asset_class(asset_class)
+    kws = ASSET_CLASS_KEYWORDS.get(cls) or []
+    items = list(news or [])
+    if not kws:
+        return items
+    out = []
+    for n in items:
+        if not isinstance(n, dict):
+            continue
+        if n.get("is_systemic"):
+            out.append(n)
+            continue
+        _txt = (str(n.get("title", "")) + " " + str(n.get("summary", ""))).lower()
+        if any(kw.lower() in _txt for kw in kws):
+            out.append(n)
+    return out or items
+
+
+def fetch_macro_news(asset_class: str = "", max_per_feed: int = 5) -> list:
+    """v5.0 Task3 接口：抓財經新聞並依資產類別過濾。
+
+    asset_class: stock / bond / fx / commodity / macro（或中文：股/債/匯/原物料/總經）。
+                 空字串或 macro → 不過濾（等同 fetch_market_news）。
+    """
+    return filter_news_by_asset_class(
+        fetch_market_news(max_per_feed=max_per_feed), asset_class)

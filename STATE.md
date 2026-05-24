@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.196 — Task3 AI 解盤補完：fetch_macro_news(asset_class) + Tab2/3 新聞依資產類別過濾（2026-05-24）
+
+- [x] **目標**（v5.0 Task3）：spec 要的 `fetch_macro_news(asset_class)` 接口 + AI 解盤模組接資產類別新聞。釐清：AI widget（`render_ai_summary_widget`）早已在 Tab1/2/3，缺的是「新聞依該 Tab 資產類別過濾」+ 分類接口
+- [x] **新接口**（`repositories/news_repository.py`）：`ASSET_CLASS_KEYWORDS`（stock/bond/fx/commodity/macro）+ `infer_asset_class(text)`（從基金名/類別推類別、多重資產→macro）+ `filter_news_by_asset_class(news, cls)`（**純過濾既有清單、零網路**；systemic 永遠留；過濾後空→回全部；macro/未知→不過濾）+ `fetch_macro_news(asset_class, max_per_feed)`（= fetch_market_news + filter，spec 接口）。中文別名（股/債/匯/原物料/總經）皆吃
+- [x] **接線（用快取、不額外打網路）**：Tab2 `_render_tab2_ai_summary` 依該基金 `infer_asset_class(name+category)` 過濾 `session_state.news_items`；Tab3 `_render_tab3_ai_summary` 統計 loaded 各檔類別取最多數（混合→macro）過濾。Tab1 本身即總經→macro（全部新聞），無需改
+- [x] **效能**：UI 端用 `filter_news_by_asset_class` 過濾已快取的 news_items，**不在 render 路徑重抓 RSS**；`fetch_macro_news` 僅供需要主動抓取時用
+- [x] **驗證** AST PASS；ruff clean（新碼）；`test_news_repository` +6 test（infer/filter 保留 systemic/macro 不過濾/空回退/中文別名/fetch 抓後濾）；`test_news_repository + test_app_smoke + test_tab2_single_fund + test_tab3_portfolio` 114 PASSED 零回歸；AppTest 渲染驗證
+
 ### v18.195 — Task2.2-step2b 組合 Tab 故事站標題（① 配置總覽 → ② 加入管理 → ③ 持倉戰情 → ④ 重疊診斷）（2026-05-24）
 
 - [x] **發現（先讀 code 不盲搬）**：配置總覽核心（組合健康儀表 + 戰情室）其實**已在 Tab 頂部**（L154-193，loaded 時顯示）；且自動讀回埋在頂部 expander（L266）、Streamlit 由上而下執行 → 中段顯示區塊**無法**搬到比 expander 更高（否則首次 render 空白）。故大區塊搬移風險高/報酬低/沙箱無法驗畫面

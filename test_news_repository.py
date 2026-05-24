@@ -75,3 +75,58 @@ def test_news_routes_through_proxy_fetch_url():
     # 第一個位置參數應為 feed URL，且有帶 timeout
     assert _mock.call_args_list[0].args[0].startswith("http")
     assert _mock.call_args_list[0].kwargs.get("timeout")
+
+
+# ── v18.196 Task3：依資產類別過濾 ──
+from repositories.news_repository import (  # noqa: E402
+    filter_news_by_asset_class,
+    infer_asset_class,
+)
+
+
+def test_infer_asset_class_basic():
+    assert infer_asset_class("安聯台灣大壩股票基金") == "stock"
+    assert infer_asset_class("聯博全球高收益債券基金") == "bond"
+    assert infer_asset_class("某某原油能源基金") == "commodity"
+    assert infer_asset_class("多重資產收益組合") == "macro"   # 無命中 → macro
+    assert infer_asset_class("") == "macro"
+
+
+def test_filter_news_by_asset_class_filters_and_keeps_systemic():
+    news = [
+        {"title": "Treasury yields rise", "summary": "bond market", "is_systemic": False},
+        {"title": "S&P 500 hits record", "summary": "stocks", "is_systemic": False},
+        {"title": "War escalates", "summary": "", "is_systemic": True},
+    ]
+    titles = [n["title"] for n in filter_news_by_asset_class(news, "bond")]
+    assert "Treasury yields rise" in titles
+    assert "War escalates" in titles            # systemic 永遠保留
+    assert "S&P 500 hits record" not in titles
+
+
+def test_filter_macro_or_empty_returns_all():
+    news = [{"title": "x", "summary": "", "is_systemic": False}]
+    assert filter_news_by_asset_class(news, "macro") == news
+    assert filter_news_by_asset_class(news, "") == news
+
+
+def test_filter_empty_result_falls_back_to_all():
+    news = [{"title": "cat video goes viral", "summary": "", "is_systemic": False}]
+    assert filter_news_by_asset_class(news, "bond") == news   # 過濾後空 → 回原
+
+
+def test_filter_chinese_alias_fx():
+    news = [{"title": "美元走強", "summary": "匯率走勢", "is_systemic": False},
+            {"title": "台股大漲", "summary": "股市", "is_systemic": False}]
+    out = filter_news_by_asset_class(news, "匯")     # 中文別名 → fx
+    assert any("美元" in n["title"] for n in out)
+    assert all("台股" not in n["title"] for n in out)
+
+
+def test_fetch_macro_news_fetches_then_filters(monkeypatch):
+    import repositories.news_repository as nr
+    fake = [{"title": "Treasury yields", "summary": "bond", "is_systemic": False},
+            {"title": "Nasdaq up", "summary": "stocks", "is_systemic": False}]
+    monkeypatch.setattr(nr, "fetch_market_news", lambda max_per_feed=5: fake)
+    out = nr.fetch_macro_news("bond")
+    assert [n["title"] for n in out] == ["Treasury yields"]
