@@ -430,6 +430,28 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AG hotfix「全部讀回」ValueError + v5.0 收尾驗收（v18.197 新增）
+
+**user 阻斷 bug**：按「立即全部讀回」→ `❌ [ValueError] The truth value of a Series is ambiguous`，讀取整個失敗。
+
+**根因**（v18.185 潛伏）：`reuse_fund_info_by_code`（`ui/helpers/portfolio_load.py`）用 `if v not in (None, "")` 過濾要沿用的欄位，但 `_FUND_INFO_KEYS` 含 `series`（pandas Series）。`Series == None`／`Series == ""` 回傳的是 Series，`in`/`bool()` 對 Series 做真值判斷即拋 ValueError。v18.185 的單元測試用 `list` 當 `series`，沒測到真 Series → 漏網。
+
+**Fix**：逐欄安全判斷 —
+```python
+if k not in src: continue
+v = src[k]
+if v is None: continue
+if isinstance(v, str) and v == "": continue   # 只保護字串空值（如 currency）
+entry[k] = v                                    # series/dict/list 直接複製
+```
+新增 `test_reuse_handles_pandas_series_value`（真 `pd.Series` 不拋錯）。
+
+**v5.0 收尾驗收**：跑完整 `pytest -m "not slow"`，抓到 2 個與本次無關的潛伏失敗 —`test_tab6_manual` 仍假設 8 sub-tabs，但 Tab6 早已 10 個（v18.169 第 9、v18.174 第 10）→ 修 test：expect 10 + mock `range(10)` + 補 2 標題關鍵字。
+
+**驗證**：`pytest -m "not slow"` 全綠 **592 passed / 1 skipped**；AppTest 14 passed（1 為 sandbox yfinance 403 環境問題）。
+
+---
+
 ### §3-AF Task3 AI 解盤補完：fetch_macro_news(asset_class) + 新聞依資產類別（v18.196 新增）
 
 **目標**（v5.0 Task3）：spec 要的「`fetch_macro_news(asset_class)` 接口 + 每 Tab AI 解盤接該資產類別新聞」。釐清：AI 解盤 widget（`render_ai_summary_widget`）早已在 Tab1/2/3，本次補的是**分類接口** + **新聞依該 Tab 資產類別過濾**。

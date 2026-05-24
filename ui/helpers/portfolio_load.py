@@ -61,9 +61,18 @@ def reuse_fund_info_by_code(
         if not src:
             continue
         for k in _FUND_INFO_KEYS:
-            v = src.get(k)
-            if v not in (None, ""):     # 不用空值覆蓋（如保單帶來的 currency）
-                entry[k] = v
+            if k not in src:
+                continue
+            v = src[k]
+            # v18.197：不可用 `v not in (None, "")` —— series 是 pandas Series，
+            # 對它做相等判斷會回傳 Series → bool() 觸發「truth value ambiguous」。
+            # 改：None 跳過；只有「空字串」才跳過（如保單帶來的 currency）；
+            # series/dict/list 一律直接複製。
+            if v is None:
+                continue
+            if isinstance(v, str) and v == "":
+                continue
+            entry[k] = v
         entry["loaded"] = True
         entry["load_error"] = None
         reused.add(_c)
