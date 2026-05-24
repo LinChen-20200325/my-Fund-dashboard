@@ -430,6 +430,24 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AA 讀取齊全：讀回/還原時用帳本補齊 portfolio_funds（v18.191 新增）
+
+**症狀**（user）：「讀取資料時帳本一直缺資料，只要讀取齊全就好」。
+
+**以 user 實際 JSON 備份驗證**：`portfolio_funds`(19) 與 `t7_ledgers`(19) 的 pk **100% 對得上**，`Ledger.from_dict` 19/19 解析成功且含完整成本（units/cost_unit/fx_avg/cost_unit_with_div）→ **JSON 還原本身是齊全的**。缺料出在 **Sheet 讀回**：T7 表單與帳本表都以 `portfolio_funds` 為主軸（spine）迭代、再用 `fund_pk_str(f)` 去 `t7_ledgers` 取成本基礎。當保單分頁（→portfolio_funds）與 `_T7_State`（→t7_ledgers）內容漂移時，只存在於快照的基金會「看不到」。
+
+**修法**：新增純函式 `ui/helpers/portfolio_load.py:reconcile_funds_with_ledgers(funds, t7_ledgers)`：
+1. 帳本有、但 portfolio_funds 沒有的部位 → 用 `parse_pk` 還原 (policy_id, code) 補成 spine 條目（`loaded=False`），確保帳本每一檔都迭代得到。
+2. 回填成本基礎 `avg_nav`/`fx_avg`/`units`/`avg_nav_with_div`（**缺值才補、不覆蓋使用者既有設定**）。
+
+接兩條讀取路徑：`load_all_from_sheet`（`_T7_State` 讀回後，report 加 `reconciled_added`）與 `restore_from_json_bytes`（JSON 還原後）。
+
+**實證**：模擬 Sheet 漂移（保單分頁只回 5/19）→ reconcile 後補回 14 檔、19 檔全有 spine + 完整成本。
+
+**驗證**：AST PASS、ruff clean、新增 4 test、132 PASSED 零回歸。
+
+---
+
 ### §3-Z 「存檔無含息來源」§5 除錯協議（v18.189 新增）
 
 **症狀①**（user 確認）：Google Sheet 保單分頁存完沒有「含息成本」欄。

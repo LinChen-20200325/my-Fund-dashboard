@@ -85,6 +85,16 @@ def restore_from_json_bytes(raw: bytes,
         _restored_led = dict(_data.get("t7_ledgers", {}) or {})
     ss["t7_ledgers"] = _restored_led
 
+    # v18.191：讀取齊全 — 用帳本補齊 portfolio_funds spine + 回填成本基礎，
+    # 確保還原後帳本不缺料（與 Sheet 讀回一致）。
+    try:
+        from ui.helpers.portfolio_load import reconcile_funds_with_ledgers
+        _rec, _ = reconcile_funds_with_ledgers(ss["portfolio_funds"], _restored_led)
+        ss["portfolio_funds"] = _rec
+        _restored_funds = _rec
+    except Exception:
+        pass   # noqa: smoke-allow-pass — 對帳失敗不擋還原，既有資料仍在
+
     ss["t7_scenarios"] = list(_data.get("t7_scenarios", []) or [])
     if _data.get("policy_sheet_id"):
         ss["policy_sheet_id"] = _data["policy_sheet_id"]

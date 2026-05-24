@@ -8,10 +8,19 @@ from __future__ import annotations
 
 import streamlit as st   # type: ignore  # 直接 monkeypatch session_state
 
+import types
+
 from ui.helpers.portfolio_load import (
     count_unloaded_funds,
+    reconcile_funds_with_ledgers,
     reuse_fund_info_by_code,
 )
+
+
+def _fake_ledger(code, currency, units, cost_unit, fx_avg, cost_unit_with_div):
+    pos = types.SimpleNamespace(units=units, cost_unit=cost_unit, fx_avg=fx_avg,
+                                cost_unit_with_div=cost_unit_with_div)
+    return types.SimpleNamespace(fund_code=code, currency=currency, position=pos)
 
 
 def _set_pf(funds: list[dict]) -> None:
@@ -155,3 +164,43 @@ def test_reuse_handles_empty_previous():
     merged = [{"code": "AAA", "loaded": False}]
     assert reuse_fund_info_by_code(merged, None) == []
     assert merged[0].get("loaded") is False
+
+
+# ── reconcile_funds_with_ledgers（讀取齊全：spine 補齊 + 成本回填）──
+
+def test_reconcile_adds_missing_spine_from_ledger():
+    """帳本有、portfolio_funds 沒有的基金 → 補成 spine 條目並帶成本基礎。"""
+    funds = []
+    tl = {"P1::ACTI71": _fake_ledger("ACTI71", "美元", 1780.94, 8.67, 32.35, 6.9655)}
+    out, n_added = reconcile_funds_with_ledgers(funds, tl)
+    assert n_added == 1
+    e = out[0]
+    assert e["code"] == "ACTI71" and e["policy_id"] == "P1"
+    assert e["avg_nav"] == 8.67 and e["fx_avg"] == 32.35
+    assert e["units"] == 1780.94 and e["avg_nav_with_div"] == 6.9655
+    assert e["loaded"] is False
+
+
+def test_reconcile_backfills_existing_fund_missing_cost():
+    """portfolio_funds 已有 spine 但缺成本（avg_nav/fx=None）→ 從帳本回填。"""
+    funds = [{"code": "ACTI71", "policy_id": "P1", "invest_twd": 499509,
+              "avg_nav": None, "fx_avg": None}]
+    tl = {"P1::ACTI71": _fake_ledger("ACTI71", "美元", 1780.94, 8.67, 32.35, 6.9655)}
+    out, n_added = reconcile_funds_with_ledgers(funds, tl)
+    assert n_added == 0
+    assert out[0]["avg_nav"] == 8.67 and out[0]["fx_avg"] == 32.35
+    assert out[0]["invest_twd"] == 499509   # 既有設定不動
+
+
+def test_reconcile_does_not_overwrite_existing_cost():
+    """portfolio_funds 已有 avg_nav → 不被帳本覆蓋。"""
+    funds = [{"code": "ACTI71", "policy_id": "P1", "avg_nav": 9.99, "fx_avg": 30.0}]
+    tl = {"P1::ACTI71": _fake_ledger("ACTI71", "美元", 1.0, 8.67, 32.35, 6.9655)}
+    out, n_added = reconcile_funds_with_ledgers(funds, tl)
+    assert out[0]["avg_nav"] == 9.99 and out[0]["fx_avg"] == 30.0
+
+
+def test_reconcile_empty_ledgers_is_noop():
+    funds = [{"code": "A", "policy_id": "P1"}]
+    out, n_added = reconcile_funds_with_ledgers(funds, {})
+    assert n_added == 0 and out == funds

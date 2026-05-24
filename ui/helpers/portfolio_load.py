@@ -70,6 +70,60 @@ def reuse_fund_info_by_code(
     return sorted(reused)
 
 
+def reconcile_funds_with_ledgers(funds, t7_ledgers) -> tuple:
+    """讀取齊全：保證每個 t7_ledgers 部位都有對應的 portfolio_funds spine 條目，
+    並把帳本的成本基礎（avg_nav / fx_avg / units / avg_nav_with_div）回填到
+    portfolio_funds（**缺值才補、不覆蓋既有**）。
+
+    動機（user：「讀取資料時帳本一直缺資料」）：表單與帳本表都以 portfolio_funds
+    為主軸（spine）迭代、再用 `fund_pk_str(f)` 去 t7_ledgers 取成本。若保單分頁
+    （→portfolio_funds）與 _T7_State（→t7_ledgers）內容漂移，帳本只有快照的基金
+    會「看不到」。本函式以 t7_ledgers（成本權威）補齊 spine，讓讀回後帳本齊全。
+
+    就地修改 funds list；回傳 (funds, n_added)。
+    """
+    from models.policy import fund_pk_str, parse_pk
+    funds = list(funds or [])
+    by_pk: dict = {}
+    for _f in funds:
+        by_pk.setdefault(fund_pk_str(_f), _f)
+
+    n_added = 0
+    for _pk, _led in (t7_ledgers or {}).items():
+        _pos = getattr(_led, "position", None)
+        if _pos is None:
+            continue
+        _cu   = float(getattr(_pos, "cost_unit", 0) or 0)
+        _fx   = float(getattr(_pos, "fx_avg", 0) or 0)
+        _cuwd = float(getattr(_pos, "cost_unit_with_div", 0) or 0)
+        _u    = float(getattr(_pos, "units", 0) or 0)
+
+        _f = by_pk.get(_pk)
+        if _f is None:
+            _pid, _code = parse_pk(_pk)
+            _f = {
+                "code":        _code or str(getattr(_led, "fund_code", "") or ""),
+                "policy_id":   _pid,
+                "policy_name": _pid,
+                "currency":    str(getattr(_led, "currency", "") or ""),
+                "loaded":      False, "load_error": None,
+            }
+            funds.append(_f)
+            by_pk[_pk] = _f
+            n_added += 1
+
+        # 回填成本基礎（缺值才補，不覆蓋使用者既有設定）
+        if not _f.get("avg_nav") and _cu:
+            _f["avg_nav"] = _cu
+        if not _f.get("fx_avg") and _fx:
+            _f["fx_avg"] = _fx
+        if not _f.get("units") and _u:
+            _f["units"] = _u
+        if not _f.get("avg_nav_with_div") and _cuwd:
+            _f["avg_nav_with_div"] = _cuwd
+    return funds, n_added
+
+
 def batch_load_unloaded_funds() -> None:
     """v18.151：批次抓取所有 portfolio_funds 內 `loaded=False` 的基金。
 
