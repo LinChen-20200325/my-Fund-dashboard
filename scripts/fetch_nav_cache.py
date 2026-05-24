@@ -38,6 +38,47 @@ FUND_CODES = [
 # 境內基金代碼（安聯台灣境內，走 SITCA 而非 TDCC 境外 API）
 DOMESTIC_PREFIXES = ("ACTI", "ACCP", "ACDD", "ACTT")
 
+
+def _codes_from_sheet() -> set:
+    """v18.202：CI 若提供 SA 憑證 + sheet id（env）→ 從保單分頁讀真實持倉代碼。
+    無憑證 → 回空集合（不 import gspread、零副作用）。"""
+    sa = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON") or os.environ.get("GSPREAD_SA_JSON")
+    sid = os.environ.get("POLICY_SHEET_ID") or os.environ.get("SHEET_ID")
+    if not (sa and sid):
+        return set()
+    from repositories.policy_repository import (  # lazy：無憑證時不載
+        _extract_code_from_url,
+        get_gspread_client,
+        load_all_policy_worksheets,
+    )
+    client = get_gspread_client(json.loads(sa))
+    df = load_all_policy_worksheets(client, sid)
+    out = set()
+    for _u in (df["fund_url"] if "fund_url" in df.columns else []):
+        _c = _extract_code_from_url(str(_u))
+        if _c:
+            out.add(_c.upper())
+    return out
+
+
+def _discover_fund_codes() -> list:
+    """v18.202：彙整要抓的基金代碼 — 硬編碼 baseline ∪ 既有 cache 檔（self-heal）
+    ∪ Sheet（CI 有 SA 憑證時）。解「新增基金忘了補 FUND_CODES → 無 cache → T5 算不出」。"""
+    codes = {c.upper() for c in FUND_CODES if c}
+    # (1) self-heal：已有 cache 檔的 code 一律持續刷新（即使被移出 FUND_CODES）
+    try:
+        for p in CACHE_DIR.glob("*.json"):
+            if not p.stem.startswith("_"):
+                codes.add(p.stem.upper())
+    except Exception:
+        pass
+    # (2) Sheet 同步（僅當 CI 提供 SA 憑證；失敗不擋）
+    try:
+        codes |= _codes_from_sheet()
+    except Exception as _e:
+        print(f"[codes] Sheet 同步略過：{_e}")
+    return sorted(c for c in codes if c)
+
 def is_domestic_code(code: str) -> bool:
     return any(code.upper().startswith(p) for p in DOMESTIC_PREFIXES)
 
@@ -348,7 +389,9 @@ def main():
     # v18.178 (#2)：累計每檔結果供結尾診斷表（定位卡 fallback / 歷史太短的 fund）
     _summary: list[dict] = []
 
-    for code in FUND_CODES:
+    _codes = _discover_fund_codes()   # v18.202：baseline ∪ 既有 cache ∪ Sheet
+    print(f"📋 目標基金代碼共 {len(_codes)} 檔：{', '.join(_codes)}\n")
+    for code in _codes:
         print(f"\n── {code} ──────────────────────────────")
         existing_cache = load_cache(code)
         existing_history = existing_cache.get("history", [])

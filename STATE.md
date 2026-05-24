@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.202 — NAV 快取代碼自動彙整：self-heal（既有 cache）+ Sheet 選用同步（2026-05-24）
+
+- [x] **痛點**（user backlog）：`scripts/fetch_nav_cache.py` 的 `FUND_CODES` 寫死 → 新增基金忘了補 → 無 cache → T5 相關係數/歷史 NAV 算不出
+- [x] **限制**：CI workflow（`fetch_nav_cache.yml`）無 Google Sheet 憑證 → 無法直接全自動讀 Sheet
+- [x] **Fix（務實）**：新增 `_discover_fund_codes()` — 抓取代碼 = 硬編碼 baseline ∪ **既有 cache 檔（self-heal：一旦被快取就持續刷新，即使被移出 FUND_CODES）** ∪ **Sheet（僅當 CI 提供 `GOOGLE_SERVICE_ACCOUNT_JSON`+`POLICY_SHEET_ID` env；否則零副作用略過、不 import gspread）**；`main()` 改用之
+- [x] **效益**：新基金一旦進過 cache 就不再漏；user 之後在 CI 加 SA secret 即全自動從保單分頁同步（不需再改 code）
+- [x] **註**：T5「短 NAV→相關係數=0」已於 v18.177 自適應頻率修；Tab1 複合風險「宏觀 0 筆」屬 FRED/yfinance 資料可用性（v18.190 降噪）；本次專注代碼彙整。沙箱擋 MoneyDJ/Yahoo 403 → 抓取本身仍須真機/CI 跑
+- [x] **驗證** AST PASS；新增 `test_fetch_nav_cache.py` 2 test（無憑證 Sheet 略過 / self-heal+baseline 彙整）；`pytest -m "not slow"` 598 passed / 1 skipped 零回歸
+
 ### v18.201 — yfinance 走 proxy：FX/NAV 改打 Yahoo Chart API（取代直連 yf.Ticker）（2026-05-24）
 
 - [x] **動機**（v5.0 spec Task1「對外 API 強制走 nas_proxy」）：稽核發現 yfinance 直連未走 proxy → Streamlit Cloud IP 被 Yahoo 擋（403 Host not in allowlist）/ 限流（AppTest `test_tab3_kpi` 的 0050/USDTWD=X 403 即此）。總經層早已避開 yfinance（打 Chart REST API + proxy），但 fund_repository 的 FX/NAV 仍直連

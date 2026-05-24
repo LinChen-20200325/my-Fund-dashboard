@@ -430,6 +430,25 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AL NAV 快取代碼自動彙整：self-heal + Sheet 選用同步（v18.202 新增）
+
+**痛點**：`scripts/fetch_nav_cache.py`（GitHub Actions 每日抓 NAV 存 `cache/nav/{CODE}.json`）的 `FUND_CODES` 寫死 → 使用者新增基金時常忘了補 → 該基金無 cache → T5 相關係數矩陣 / 歷史 NAV 算不出。
+
+**限制**：CI workflow `fetch_nav_cache.yml` 目前**無 Google Sheet 憑證**，無法直接全自動讀保單分頁。
+
+**修法（務實、漸進）**：新增 `_discover_fund_codes()`，抓取目標代碼 = 三來源聯集：
+1. 硬編碼 `FUND_CODES`（baseline）。
+2. **既有 cache 檔（self-heal）**：掃 `cache/nav/*.json`（排除 `_` 開頭），一旦某代碼被快取過就持續刷新，即使被移出 `FUND_CODES`。
+3. **Sheet（選用）**：`_codes_from_sheet()` 僅當 CI 提供 `GOOGLE_SERVICE_ACCOUNT_JSON` + `POLICY_SHEET_ID`（env）時，才 lazy import gspread 讀保單分頁 `fund_url` → 代碼；無憑證回空集合、零副作用。
+
+**效益**：新基金一旦進過 cache 就不再漏；使用者日後在 CI 加 SA secret 即全自動從保單分頁同步、不需再改 code。
+
+**邊界/相容**：無憑證 → 不 import gspread；Sheet 讀取失敗 → try/except 略過不擋；沙箱擋 MoneyDJ/Yahoo 403 → 抓取本身仍須真機/CI 跑（本次只驗代碼彙整純邏輯）。
+
+**驗證**：AST PASS、新增 `test_fetch_nav_cache.py` 2 test（無憑證 Sheet 略過 / self-heal+baseline 彙整）、`pytest -m "not slow"` 598 passed / 1 skipped。
+
+---
+
 ### §3-AK yfinance 走 proxy：FX/NAV 改打 Yahoo Chart API（v18.201 新增）
 
 **動機**（v5.0 spec Task1「所有對外 API 強制套用 nas_proxy」）：稽核發現 `repositories/fund_repository.py` 的 `get_latest_fx`（`USDTWD=X`）與 `get_latest_nav`（基金 NAV）**直連 `yf.Ticker`、未走 proxy** → Streamlit Cloud IP 被 Yahoo 擋（`403 Host not in allowlist`）/ 限流（AppTest `test_tab3_with_mock_fund_renders_kpi_cards` 的 0050/USDTWD=X 403 即此）。總經層（macro_repository / macro_service / tw_macro）早已避開 yfinance、改打 Yahoo Chart REST API 經 proxy。
