@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.197 — hotfix「全部讀回」ValueError（reuse series 真值判斷）+ v5.0 收尾驗收（2026-05-24）
+
+- [x] **user 阻斷 bug**：按「立即全部讀回」→ `❌ [ValueError] The truth value of a Series is ambiguous`，讀取直接失敗
+- [x] **根因（v18.185 潛伏）**：`reuse_fund_info_by_code` 用 `if v not in (None, "")` 過濾要沿用的欄位，但 `_FUND_INFO_KEYS` 含 `series`（pandas Series）→ `Series == None/""` 回 Series → `bool()` 觸發 ambiguous ValueError。v18.185 的 test 用 list 當 series 沒測到真 Series
+- [x] **Fix**（`ui/helpers/portfolio_load.py`）：改逐欄判斷 — `None` 跳過；`isinstance(v,str) and v==""` 才跳過（保護 currency 空字串不覆蓋）；series/dict/list 一律直接複製。新增 `test_reuse_handles_pandas_series_value`（真 pd.Series 不拋錯）
+- [x] **v5.0 收尾驗收**：跑完整 fast tier `pytest -m "not slow"`。發現 2 個**潛伏失敗**（非本次）：`test_tab6_manual` 仍假設 8 sub-tabs，但 Tab6 早已 10 個（v18.169 加第 9、v18.174 加第 10）→ `_t6[8]` IndexError。修：test 改 expect 10 + mock `range(10)` + 補 2 個新標題關鍵字
+- [x] **驗證** AST PASS；`pytest -m "not slow"` 全綠 **592 passed / 1 skipped**（含新 Series 回歸 test）；AppTest 14 passed（1 failed 為 sandbox yfinance 403 環境問題）
+
 ### v18.196 — Task3 AI 解盤補完：fetch_macro_news(asset_class) + Tab2/3 新聞依資產類別過濾（2026-05-24）
 
 - [x] **目標**（v5.0 Task3）：spec 要的 `fetch_macro_news(asset_class)` 接口 + AI 解盤模組接資產類別新聞。釐清：AI widget（`render_ai_summary_widget`）早已在 Tab1/2/3，缺的是「新聞依該 Tab 資產類別過濾」+ 分類接口

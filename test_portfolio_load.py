@@ -204,3 +204,18 @@ def test_reconcile_empty_ledgers_is_noop():
     funds = [{"code": "A", "policy_id": "P1"}]
     out, n_added = reconcile_funds_with_ledgers(funds, {})
     assert n_added == 0 and out == funds
+
+
+def test_reuse_handles_pandas_series_value():
+    """v18.197 回歸：series 是 pandas Series → 不可用 `v not in (None,'')`
+    （會回 Series → bool() 觸發 truth-value-ambiguous ValueError）。"""
+    import pandas as pd
+    s = pd.Series([1.0, 2.0, 3.0])
+    prev = [{"code": "AAA", "loaded": True, "name": "X",
+             "series": s, "metrics": {"sharpe": 1.0}, "currency": "USD"}]
+    merged = [{"code": "AAA", "policy_id": "P2", "loaded": False, "currency": ""}]
+    reused = reuse_fund_info_by_code(merged, prev)   # 不應拋 ValueError
+    assert reused == ["AAA"]
+    assert merged[0]["series"] is s            # series 直接沿用
+    assert merged[0]["loaded"] is True
+    assert merged[0]["currency"] == "USD"      # 空字串被沿用值補上

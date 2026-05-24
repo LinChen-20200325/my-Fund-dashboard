@@ -23,8 +23,8 @@ def test_module_imports_ok():
     assert len(sig.parameters) == 0   # 純無參數函式
 
 
-def test_render_calls_streamlit_tabs_with_8_subtabs():
-    """render_manual_tab 內部建立 8 個 sub-tab（與既有 app.py Tab6 結構一致）。"""
+def test_render_calls_streamlit_tabs_with_10_subtabs():
+    """render_manual_tab 內部建立 10 個 sub-tab（v18.169 加第 9、v18.174 加第 10）。"""
     from ui import tab6_manual as t6
     captured_labels: list = []
 
@@ -45,10 +45,11 @@ def test_render_calls_streamlit_tabs_with_8_subtabs():
     with patch.object(t6, "st", fake_st):
         t6.render_manual_tab()
 
-    # 8 個 sub-tab 標題包含預期關鍵字
-    assert len(captured_labels) == 8
+    # 10 個 sub-tab 標題包含預期關鍵字
+    assert len(captured_labels) == 10
     for kw in ["Macro Score", "景氣天氣", "六因子", "吃本金", "再平衡",
-               "台股TPI", "核心衛星", "汰弱留強"]:
+               "台股TPI", "核心衛星", "汰弱留強",
+               "Sheet 資料結構", "全局指標關聯地圖"]:
         assert any(kw in lbl for lbl in captured_labels), f"missing sub-tab: {kw}"
 
 
@@ -64,7 +65,7 @@ def test_render_does_not_touch_session_state():
         def __exit__(self, *a): return False
 
     fake_st = MagicMock(spec=["markdown", "caption", "dataframe", "tabs"])
-    fake_st.tabs.return_value = [_FakeTab() for _ in range(8)]
+    fake_st.tabs.return_value = [_FakeTab() for _ in range(10)]
 
     with patch.object(t6, "st", fake_st):
         # 若 render 試圖 .session_state.xxx 會 AttributeError（spec 沒列）

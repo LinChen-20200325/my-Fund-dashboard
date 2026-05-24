@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.197 / 2026-05-24** — hotfix「全部讀回」ValueError + v5.0 收尾驗收。user 按讀回 → `ValueError: truth value of a Series is ambiguous`。根因（v18.185 潛伏）：`reuse_fund_info_by_code` 的 `if v not in (None, "")` 對 `series`（pandas Series）做相等判斷 → 回 Series → bool() 爆。Fix：逐欄判斷（None 跳過、空字串才跳過、series/dict/list 直接複製）+ 加真 pd.Series 回歸 test。收尾驗收跑 `pytest -m "not slow"` 抓到 2 個潛伏失敗：`test_tab6_manual` 仍假設 8 sub-tabs（Tab6 早已 10）→ 修 test expect 10。全綠 592 passed / 1 skipped。
+
 > 🆕 **v18.196 / 2026-05-24** — Task3 AI 解盤補完。`repositories/news_repository.py` 加 `ASSET_CLASS_KEYWORDS` + `infer_asset_class(text)` + `filter_news_by_asset_class(news, cls)`（純過濾、零網路、systemic 永留、空回退、中文別名）+ `fetch_macro_news(asset_class, max_per_feed)`（spec 接口 = fetch_market_news + filter）。接線：Tab2 AI 摘要依該基金類別、Tab3 依組合主類別過濾**已快取**的 `session_state.news_items`（不在 render 路徑重抓 RSS）；Tab1 本即總經=macro（不過濾），無需改。AI widget 本就在 Tab1/2/3，本次補的是「新聞依資產類別」。新增 6 test，114 PASSED。
 
 > 🆕 **v18.195 / 2026-05-24** — Task2.2-step2b 組合 Tab 故事站標題。發現配置總覽核心（健康儀表+戰情室）已在頂部、且自動讀回埋在頂部 expander → 中段顯示區塊無法上移（load→display 順序），大區塊搬移風險高且沙箱無法驗畫面。改採 user 選的「加故事站標題」：在既有結構加 4 個 `###` 標題標示動線 — ① 📊 配置總覽 / ② ➕ 加入與管理 / ③ 💼 持倉戰情(T7) / ④ 🔬 重疊度診斷(T5)，呼應頂部 tab 麵包屑。純 markdown 加/改、零區塊搬移、零變數變動、各 header 縮排正確且非巢狀 expander。99 PASSED。
