@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.194 — Task2.2-step2a 組合 Tab 內部故事線：T7 持倉戰情移到 T5 重疊診斷之前（2026-05-24）
+
+- [x] **目標**（v5.0 Task2.2 step2）：組合 Tab 內部由上而下理成故事線「① 配置總覽 → ② 加入/載入 → ③ 持倉戰情(T7) → ④ 重疊診斷(T5)」
+- [x] **先做最安全/最高槓桿一步**：原順序 …收益矩陣 → **T5 重疊診斷 → T7 持倉帳本** → AI（持倉排在診斷之後、違反敘事）。把 `render_t7_section()` 從 T5 之後移到 T5 之前 → 收益矩陣 → **T7 → T5** → AI
+- [x] **依賴安全**（先用 Explore 全函式 mapping 驗證）：T7 為自含函式呼叫（`tab3_t7_ledger.render_t7_section()`、讀 session_state），置於所有 載入/加入/批次 區塊（L1425-1793）之後 → portfolio_funds/t7_ledgers 齊全；T5 用 `_pf_for_corr_raw`/`_t5_groups`（在 T5 區塊內自建）+ series，與 T7 的 invest_twd sync 無關 → 互換零 NameError/use-before-define 風險。`render_t7_section()` 確認全檔僅 1 處呼叫
+- [x] **其餘大搬動延後**：把「配置總覽（核心/衛星 hero + KPI + 成長曲線）」上移到最前，牽涉搬多個 ~100 行 DISPLAY 區塊、且沙箱無法驗證畫面 → 留 step2b，待 user 看畫面回饋
+- [x] **驗證** AST PASS；ruff F-check clean；`render_t7_section` 全檔 1 呼叫；`test_app_smoke + test_tab3_portfolio` 99 PASSED（含 full app.py exec）；AppTest 渲染驗證
+
 ### v18.193 — Task2.2-step1 故事化動線：tab 重排（總經→組合→單一）+ 敘事導覽列（2026-05-24）
 
 - [x] **目標**（v5.0 Task2.2）：讓介面順 spec 敘事閱讀「全球總經環境 → 核心/衛星配置 → 單一基金深掘」。**偏視覺、沙箱無法驗證畫面 → 分階段**，本次只做最高槓桿/低風險的 step1（tab 重排 + 導覽列），tab 內部大改排留作逐 tab 後續（需 user 看畫面回饋）

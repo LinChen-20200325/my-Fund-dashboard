@@ -1943,7 +1943,13 @@ def render_portfolio_tab() -> None:
                 # 詳細數字在 hero「💵 現金流安全」/「🔴 留校查看」見。
 
 
-    # ─── 以下為原 with tab3: 第二段 (T5/T6/T7) ───────────────
+    # ─── 以下為原 with tab3: 第二段 ───────────────
+    # v18.194 故事化：T7 持倉戰情（③）移到 T5 重疊診斷（④）之前，
+    # 符合「① 配置總覽 → ② 加入/載入 → ③ 持倉戰情 → ④ 重疊診斷」的由上而下敘事。
+    # T7 為自含函式、讀 session_state，置於所有 載入/加入 區塊之後 → 資料齊全、零依賴風險。
+    # ── T7 帳務 + AI 深度組合建議 ── (v18.144 抽至 ui/tab3_t7_ledger.py)
+    render_t7_section()
+
     # ── T5: 持股相關性矩陣（v18.36 按保單分組）──────────────────────────────
     _pf_for_corr_raw = [f for f in st.session_state.portfolio_funds
                         if f.get("loaded") and f.get("series") is not None]
@@ -2071,8 +2077,7 @@ def render_portfolio_tab() -> None:
                             "0~0.3 = 分散良好。建議擇一持有 大於等於 0.7 的對。"
                         )
 
-    # ── T7 帳務 + AI 深度組合建議 ── (v18.144 抽至 ui/tab3_t7_ledger.py)
-    render_t7_section()
+    # ── T7 已移至 T5 之前（v18.194 故事化：持倉戰情 → 重疊診斷）──
 
     # v18.159：通用 AI 白話文總結 widget（4 視角 selectbox）
     _render_tab3_ai_summary(GEMINI_KEY)

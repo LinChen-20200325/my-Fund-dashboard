@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.194 / 2026-05-24** — Task2.2-step2a 組合 Tab 內部故事線。`render_portfolio_tab()` 原順序「收益矩陣 → T5 重疊診斷 → T7 持倉帳本 → AI」把持倉排在診斷之後、違反敘事；將 `render_t7_section()` 移到 T5 之前 →「… → T7 持倉戰情 → T5 重疊診斷 → AI」。先以 Explore 全函式 mapping 驗證依賴：T7 為自含函式（讀 session_state）、置於所有載入/加入區塊後、與 T5 的 `_t5_groups`/series 無交叉 → 零 use-before-define 風險（全檔僅 1 處呼叫）。配置總覽上移等多區塊大搬動延後（沙箱無法驗畫面）。99 PASSED。
+
 > 🆕 **v18.193 / 2026-05-24** — Task2.2-step1 故事化動線。`app.py` `st.tabs` 重排為 **總經→組合→單一基金→資料診斷→說明書**（原單一基金在組合前、違反 spec 敘事；變數改語意名、render 函式不變）。新增 `ui/helpers/story_nav.py`（`story_nav_markdown` 純函式 + `render_story_nav`），三敘事 tab 標題下加「① 🌐 總經環境 → ② 📊 核心/衛星配置 → ③ 🔍 單一基金深掘」麵包屑（目前站藍色 highlight）。偏視覺故分階段：tab 內部區塊重排留作逐 tab 後續。新增 4 test，99 PASSED（含 full app.py exec）。
 
 > 🆕 **v18.192 / 2026-05-24** — Task2.1 教學化 expander。新增 `ui/helpers/metric_explainers.py`（`METRIC_EXPLAINERS` 8 條指標白話文 + 實戰意義；純函式 `explainer_markdown` + `render_metric_explainer` 渲染 `st.expander`、內容/渲染分離）。Tab2 風險指標（σ/Sharpe/Alpha/Beta）與 Tab3 核心/衛星 Hero 下方就近加「💡 這些數據代表什麼？」收合說明，**不動既有數據顯示、純加法**。兩 call site 經查非在 expander 內（不觸發巢狀 crash）。新增 5 test，109 PASSED。
