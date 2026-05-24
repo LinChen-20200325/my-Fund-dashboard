@@ -430,6 +430,26 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AQ Tab2 三 AI 整併為唯一 `render_ai_summary_widget`（吃全章節快照）（v18.207 新增）
+
+**需求**（user 截圖）：「單一基金深度分析有很多個 AI，請幫我只留一個，且該 AI 需要抓取這 Tab 所有章節的資料作資料分析與總結」。
+
+**現況**：Tab2 散落 3 個 AI——① v18.135 `analyze_fund_json` 紅綠燈按鈕、② v18.205 個股新聞面 AI（sibling widget）、③ v18.159 末端 `_render_tab2_ai_summary` widget。彼此快照各看片段、且按鈕式 AI 與白話文 widget 並存讓使用者困惑。
+
+**修法（user 選「留統一 widget」）**：
+- 刪除 `analyze_fund_json` 按鈕區、個股新聞面 AI、末端 `_render_tab2_ai_summary` 函式 → 「### ④ AI 深度解盤」單一 `render_ai_summary_widget(tab_key="tab2", tab_label="單一基金（…）", snapshot, headlines, gemini_api_key)`。
+- **全章節快照 `_snap`**：基本(類別/幣別/淨值)＋績效(1m/3m/6m/1y/1y_total/ytd)＋風險1Y(σ/Sharpe/Alpha/Beta，取 `mj_raw.risk_metrics.risk_table.一年`)＋配息(年化率+筆數)＋買賣點/技術(buy1-3/bb/ma60)＋前10大持股(`_zh_holding`)＋產業配置＋持倉三率穿透(`shield_{fk}`)＋總經位階(`phase_info_s`)。
+- **新聞**：優先逐股 `_stknews_{fund}`（v18.206，最多 15 則），無則退資產類別過濾廣義新聞（最多 8 則）。
+- widget 本身自帶 `st.expander`，置於 ④ 區頂層（非巢狀）→ 不觸發 v18.156 巢狀 crash。
+
+**清理**：移除 now-unused `from services.ai_service import (analyze_fund_json, event_impact_analysis)`（後者為 main 既有 dead import）。
+
+**邊界**：無 GEMINI_KEY → 不渲染 AI 區；快照各段「有值才帶」（空段省略）；新聞兩來源皆空 → headlines=[]，widget 仍可生成。
+
+**驗證**：AST PASS、ruff 與 main 同基準、`pytest -m "not slow"` 606 passed / 1 skipped、`test_tab2_single_fund.py` 5 passed、Tab2 AppTest 渲染。沙箱無 GEMINI_KEY 故 AI 分支不執行 → 逐一 grep 確認快照引用變數皆在 scope。
+
+---
+
 ### §3-AP 個股新聞面升級：逐股 Google News 搜尋（v18.206 新增）
 
 **問題**：v18.205 的「📰 個股新聞面」只**過濾既有廣義 RSS 新聞**（`filter_news_by_keywords`），對台股/債券/冷門持股難命中 → user 實際看到「命中持股 0 則」。

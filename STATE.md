@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.207 — Tab2 收斂：三個 AI 整併為唯一 `render_ai_summary_widget`（吃全章節快照）（2026-05-24）
+
+- [x] **痛點**（user 截圖回饋）：「單一基金深度分析有很多個 AI，請幫我只留一個，且該 AI 需要抓取這 Tab 所有章節的資料作資料分析與總結」——Tab2 原本散落 3 個 AI：① v18.135 `analyze_fund_json` 紅綠燈按鈕、② v18.205 個股新聞面 AI、③ v18.159 末端 `_render_tab2_ai_summary` widget
+- [x] **整併（user 選「留統一 widget」）**：刪 `analyze_fund_json` 按鈕區、刪個股新聞面 AI、刪末端 `_render_tab2_ai_summary` 函式 → 「### ④ AI 深度解盤」單一 `render_ai_summary_widget(tab_key="tab2", ...)` 收口
+- [x] **全章節快照 `_snap`**：基本(類別/幣別/淨值)＋績效(1m/3m/6m/1y/1y_total/ytd)＋風險1Y(σ/Sharpe/Alpha/Beta，取自 `mj_raw.risk_metrics.risk_table.一年`)＋配息(年化率+筆數)＋買賣點/技術(buy1-3/bb/ma60)＋前10大持股(`_zh_holding`)＋產業配置＋持倉三率穿透(`shield_{fk}`)＋總經位階(`phase_info_s`)
+- [x] **新聞來源**：優先逐股 `_stknews_{fund}`（v18.206 Google News，最多 15 則），無則退資產類別過濾廣義新聞（最多 8 則）
+- [x] **清理**：移除 now-unused `from services.ai_service import (analyze_fund_json, event_impact_analysis)`（`event_impact_analysis` 為 main 既有 dead import）
+- [x] **驗證** AST PASS；ruff 與 main 同基準（無新增告警）；`pytest -m "not slow"` 606 passed / 1 skipped 零回歸；`test_tab2_single_fund.py` 5 passed；Tab2 AppTest 渲染驗證。沙箱無 GEMINI_KEY 故 AI 分支不執行，已逐一 grep 確認 `_snap` 引用變數（mj_raw/m/divs/_tops/_sectors/phase_info_s/_zh_holding/name/fk）皆在 scope
+
 ### v18.206 — 個股新聞面升級：逐股 Google News 搜尋（按鈕）取代「濾廣義新聞」（2026-05-24）
 
 - [x] **問題**（user 截圖）：v18.205 的 個股新聞面「命中持股 0 則」——因為只**過濾既有廣義 RSS 新聞**，台股/債券/冷門持股本就難命中（user：個股新聞沒看到）

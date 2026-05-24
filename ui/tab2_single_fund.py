@@ -27,10 +27,6 @@ from repositories.fund_repository import (
     fetch_fund_from_moneydj_url,
     tdcc_search_fund,
 )
-from services.ai_service import (
-    analyze_fund_json,
-    event_impact_analysis,
-)
 from services.fund_service import (
     calc_metrics,
     calc_dividend_estimate,
@@ -1143,22 +1139,8 @@ def render_single_fund_tab() -> None:
                                        "或這些持股近期無中文新聞）。")
                         else:
                             st.caption("👆 點「📡 抓個股新聞」開始逐股搜尋。")
-                    # AI 新聞面分析（放 expander 外，避免巢狀 expander crash）
-                    _stk_data = st.session_state.get(_ss_stk) or {}
-                    if _stk_data:
-                        from ui.helpers.ai_summary import render_ai_summary_widget  # noqa: PLC0415
-                        _flat = [(d, it) for d, items in _stk_data.items() for it in items]
-                        _sn_snap = [f"## 個股新聞面快照：{name or fk}",
-                                    "- 持股：" + "、".join(_stk_data.keys())]
-                        for _disp_nm, _it in _flat[:15]:
-                            _sn_snap.append(f"- [{_disp_nm}] {_it.get('title', '')}")
-                        render_ai_summary_widget(
-                            tab_key="tab2_stknews",
-                            tab_label=f"個股新聞面（{name or fk}）",
-                            snapshot="\n".join(_sn_snap),
-                            headlines=[it.get("title", "") for _d, it in _flat[:15]],
-                            gemini_api_key=GEMINI_KEY,
-                        )
+                    # v18.207：個股新聞的 AI 分析已併入下方唯一的「④ AI 深度解盤」
+                    # （讀 session_state 的 _stknews 一起進全章節快照），此處不再單獨掛 AI。
 
                 # ── V4: 微觀防護盾 — 前十大持倉三率檢核 ────────────────
                 _shield_tops = (_holdings.get("top_holdings") or []) if _holdings else []
@@ -1216,98 +1198,79 @@ def render_single_fund_tab() -> None:
                                 st.warning("所有持倉均無法解析 Ticker 或 yfinance 暫無財報，請稍後再試。")
 
                 st.markdown("### ④ AI 深度解盤")
-                # AI 基金分析
                 st.divider()
+                # v18.207：Tab2「唯一」AI — 統一 render_ai_summary_widget（4 視角），
+                # 吃「全章節快照」（基本/績效/風險/配息/買賣點/持股/產業/個股新聞/三率/總經位階）。
+                # 原 v18.135 analyze_fund_json 按鈕、個股新聞 AI、末端重複 widget 已整併於此。
                 if GEMINI_KEY:
-                    # ── 三色燈號阻斷（Core Protocol v2.0 Ch.1）─────────
-                    # v18.78：紅燈不再隱藏按鈕，改用 override 讓使用者自選
-                    #          原本紅燈時 AI 按鈕完全消失，使用者反饋「按鈕不見了」。
+                    from ui.helpers.ai_summary import render_ai_summary_widget  # noqa: PLC0415
+                    from repositories.news_repository import (  # noqa: PLC0415
+                        infer_asset_class as _infer_ac,
+                        filter_news_by_asset_class as _filter_news,
+                    )
                     _ai_fd_pct, _ = _calc_data_health()
-                    _ai_blocked = _ai_fd_pct < 50
-                    _ai_override = False
-                    if _ai_blocked:
-                        st.markdown(
-                            "<div style='border-left:4px solid #f44336;background:#1a1f2e;"
-                            "border-radius:0 8px 8px 0;padding:10px 14px;font-size:13px;margin-bottom:8px'>"
-                            "🔴 <b>紅燈阻斷</b>：總經資料完整率 "
-                            f"<b>{_ai_fd_pct}%</b>（&lt;50%）— 建議先切到「🌐 總經」分頁按"
-                            "「📡 全量抓取」載入指標後再分析（含景氣位階背景）。</div>",
-                            unsafe_allow_html=True)
-                        _ai_override = st.checkbox(
-                            "略過阻斷 — 僅用基金本身資料分析（無總經背景，準確度降低）",
-                            key=f"chk_ai_override_{fk}")
+                    if _ai_fd_pct < 50:
+                        st.caption(f"🔴 總經資料完整率 {_ai_fd_pct}%：建議先到「🌐 總經」按全量抓取，"
+                                   "AI 才有景氣位階背景（仍可直接生成、僅準確度略降）。")
                     elif _ai_fd_pct < 80:
-                        st.warning(f"🟡 資料完整率 **{_ai_fd_pct}%**（黃燈），AI 結果參考性降低。")
+                        st.caption(f"🟡 資料完整率 {_ai_fd_pct}%，AI 參考性略降。")
 
-                    _ai_enabled = (not _ai_blocked) or _ai_override
-                    _ai_btn_label = ("🤖 AI 基金分析（無總經背景）" if _ai_blocked and _ai_override
-                                     else "🤖 AI 基金分析")
-                    _ai_btn_help = ("總經紅燈中，僅用基金本身資料分析" if _ai_blocked and _ai_override
-                                    else "先載入總經資料以獲得景氣背景分析" if _ai_blocked
-                                    else None)
-                    if st.button(_ai_btn_label, key="btn_fund_ai",
-                                  disabled=not _ai_enabled, help=_ai_btn_help):
-                        with st.spinner("Gemini 分析中（含 RSS 新聞抓取）..."):
-                            # v18.135: 補傳真 holdings + 即時抓 RSS 新聞給 AI 第四節交叉分析
-                            try:
-                                from repositories.news_repository import fetch_market_news as _fetch_n_t2
-                                _t2_news = _fetch_n_t2(max_per_feed=3) or []
-                            except Exception:
-                                _t2_news = []
-                            _t2_holdings = (mj_raw.get("holdings") or {})
-                            try:
-                                _ai = analyze_fund_json(
-                                    GEMINI_KEY, name or fk, m,
-                                    mj_raw.get("perf", {}), phase_info_s,
-                                    risk_metrics=mj_raw.get("risk_metrics"),
-                                    holdings=_t2_holdings,
-                                    view_mode=st.session_state.get("view_mode", "🔴 L3 老手沙盤"),
-                                    news_items=_t2_news,
-                                )
-                                st.session_state.fund_ai_txt = _ai
-                            except Exception as _e:
-                                _friendly_error("AI 基金分析失敗", _e,
-                                    hint="可能是 API 額度用完、網路斷線，或基金資料不全。請稍後重試。")
-                    if st.session_state.get("fund_ai_txt"):
-                        st.markdown(st.session_state.fund_ai_txt)
-
-    # v18.159：通用 AI 白話文總結 widget（4 視角 selectbox）
-    _render_tab2_ai_summary(GEMINI_KEY)
-
-
-def _render_tab2_ai_summary(gemini_key: str) -> None:
-    """v18.159 Tab2 末端：4 視角 AI 白話文總結 widget。"""
-    from ui.helpers.ai_summary import render_ai_summary_widget  # noqa: PLC0415
-    fd = st.session_state.get("fund_data") or {}
-    if not fd:
-        return  # 尚未載入基金，不顯示 widget
-    m = fd.get("metrics") or {}
-    name = fd.get("name", "") or fd.get("code", "") or "—"
-    lines = [f"## 單一基金快照：{name}"]
-    for k in ("nav", "ret_1m", "ret_3m", "ret_1y", "ret_1y_total",
-              "annual_div_rate", "sharpe", "std_1y", "buy1", "buy2",
-              "bb_upper", "ma60"):
-        if k in m and m[k] not in (None, ""):
-            lines.append(f"- {k}：{m[k]}")
-    snapshot = "\n".join(lines) if len(lines) > 1 else ""
-    # v18.196（Task3）：依「這檔基金的資產類別」過濾既有新聞（不額外打網路）。
-    from repositories.news_repository import (  # noqa: PLC0415
-        infer_asset_class as _infer_ac,
-        filter_news_by_asset_class as _filter_news,
-    )
-    _t2_cat = str(m.get("category", "") or fd.get("category", "") or "")
-    _t2_cls = _infer_ac(f"{name} {_t2_cat}")
-    _t2_news_all = st.session_state.get("news_items", []) or []
-    headlines = [str(n.get("title", "") or n.get("headline", ""))
-                 for n in _filter_news(_t2_news_all, _t2_cls)
-                 if isinstance(n, dict)][:8]
-    render_ai_summary_widget(
-        tab_key="tab2",
-        tab_label=f"單一基金（{name}）",
-        snapshot=snapshot,
-        headlines=headlines,
-        gemini_api_key=gemini_key,
-    )
+                    _rt1y = ((mj_raw.get("risk_metrics", {}) or {}).get("risk_table", {}) or {}).get("一年", {}) or {}
+                    _snap = [f"## 單一基金全章節快照：{name or fk}"]
+                    _snap.append(f"- 基本：類別={mj_raw.get('category','') or '—'}"
+                                 f"｜幣別={mj_raw.get('currency','') or '—'}"
+                                 f"｜最新淨值={m.get('nav','—')}")
+                    _perf_bits = [f"{_k}={m.get(_k)}" for _k in
+                                  ("ret_1m", "ret_3m", "ret_6m", "ret_1y", "ret_1y_total", "ytd")
+                                  if m.get(_k) not in (None, "")]
+                    if _perf_bits:
+                        _snap.append("- 績效：" + "｜".join(_perf_bits))
+                    _risk_bits = [f"{_lbl}={_rt1y.get(_key)}" for _lbl, _key in
+                                  (("σ", "標準差"), ("Sharpe", "Sharpe"),
+                                   ("Alpha", "Alpha"), ("Beta", "Beta"))
+                                  if _rt1y.get(_key) not in (None, "")]
+                    if _risk_bits:
+                        _snap.append("- 風險(1Y)：" + "｜".join(_risk_bits))
+                    if m.get("annual_div_rate"):
+                        _snap.append(f"- 配息：年化配息率≈{m.get('annual_div_rate')}%，近期 {len(divs)} 筆")
+                    _bs = [f"{_k}={m.get(_k)}" for _k in
+                           ("buy1", "buy2", "buy3", "bb_upper", "bb_lower", "ma60")
+                           if m.get(_k) not in (None, "")]
+                    if _bs:
+                        _snap.append("- 買賣點/技術：" + "｜".join(_bs))
+                    if _tops:
+                        _snap.append("- 前10大持股：" + "、".join(
+                            f"{_zh_holding(str(_t.get('name',''))) or str(_t.get('name',''))[:14]}"
+                            f"({float(_t.get('pct',0) or 0):.1f}%)" for _t in _tops[:10]))
+                    if _sectors:
+                        _snap.append("- 產業配置：" + "、".join(
+                            f"{str(_s.get('name',''))[:8]} {float(_s.get('pct',0) or 0):.0f}%"
+                            for _s in _sectors[:5]))
+                    _shield_cache_ai = st.session_state.get(f"shield_{fk}")
+                    if _shield_cache_ai:
+                        _snap.append(f"- 持倉三率穿透：已掃 {len(_shield_cache_ai)} 檔（毛利/營益/淨利 QoQ）")
+                    if phase_info_s:
+                        _snap.append(f"- 總經背景：位階={phase_info_s.get('phase','')}"
+                                     f"（分數 {phase_info_s.get('score','')}）")
+                    # 新聞：優先「已逐股抓的個股新聞」，否則退資產類別過濾的廣義新聞
+                    _stk_news_ai = st.session_state.get(
+                        f"_stknews_{str(fk or name or 'fund')[:40]}") or {}
+                    if _stk_news_ai:
+                        _hl = [it.get("title", "") for items in _stk_news_ai.values()
+                               for it in items][:15]
+                        _snap.append(f"- 個股新聞：{len(_hl)} 則（逐股 Google News）")
+                    else:
+                        _t2cls = _infer_ac(f"{name} {mj_raw.get('category','')}")
+                        _hl = [str(n.get("title", "")) for n in
+                               _filter_news(st.session_state.get("news_items", []) or [], _t2cls)
+                               if isinstance(n, dict)][:8]
+                    render_ai_summary_widget(
+                        tab_key="tab2",
+                        tab_label=f"單一基金（{name or fk}）",
+                        snapshot="\n".join(_snap),
+                        headlines=_hl,
+                        gemini_api_key=GEMINI_KEY,
+                    )
 
 
 # ══════════════════════════════════════════════════════
