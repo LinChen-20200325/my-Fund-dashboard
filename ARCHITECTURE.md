@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.203 / 2026-05-24** — 程式碼健康度：修 fund_repository 3 個潛伏 bug（ruff F821 查證）。(1) 缺 `import re` → 13 處 HTML 解析 `re.*` 被呼叫時 NameError→靜默失敗；(2) 缺 `import requests` → 3 處 proxy-aware `requests.get` NameError→落 fallback；(3) `_is_insurance_code` 在 `_fetch_fund_single` 內 use-before-assign（nav<10 短資料 fallback L2484+ 先引用、L2581 才賦值）→ 短資料 UnboundLocalError（查無資料 edge case）。修：補兩個模組層 import + 把 `_is_insurance_code` 提前到函式開頭。F821 13→0。`test_app_apptest` 為 slow tier、不在 fast CI；其 yfinance 403 為沙箱網路限制非程式 bug。新增 guard test，598 passed。
+
 > 🆕 **v18.202 / 2026-05-24** — NAV 快取代碼自動彙整。`scripts/fetch_nav_cache.py` 的 `FUND_CODES` 寫死、新增基金易漏。新增 `_discover_fund_codes()`：baseline ∪ 既有 cache 檔（self-heal）∪ Sheet（CI 有 `GOOGLE_SERVICE_ACCOUNT_JSON`+`POLICY_SHEET_ID` 時，否則略過、不 import gspread）。CI workflow 無 Sheet 憑證 → self-heal 先生效；加 secret 後即全自動。T5 短 NAV 相關係數已於 v18.177 修；本次專注代碼彙整。新增 2 test，598 passed。
 
 > 🆕 **v18.201 / 2026-05-24** — yfinance 走 proxy（v5.0 spec Task1 連線防護）。稽核發現 `fund_repository.get_latest_fx`（USDTWD=X）/ `get_latest_nav`（NAV）直連 `yf.Ticker` 未走 proxy → Cloud IP 被 Yahoo 擋 403/限流（AppTest test_tab3_kpi 的 0050/USDTWD=X 即此）。改用 `macro_repository.fetch_yf_close`（Yahoo Chart REST API + `infra.proxy.fetch_url` + 10min TTL，總經層已驗證可行），lazy import 避循環；Morningstar/Cnyes fallback 不動。`financial_repository` 三率（季財報無 Chart API）維持優雅降級。新增 guard test，596 passed。

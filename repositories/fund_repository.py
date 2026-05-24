@@ -15,6 +15,8 @@ v11.0 分層歸位：本檔屬於 Repository Layer，HTTP / cache I/O。
 """
 from __future__ import annotations
 
+import re        # [Auto-Fixed v18.203] 原缺此 import，致多處 HTML 解析的 re.findall/search 被呼叫時 NameError→靜默失敗
+import requests   # [Auto-Fixed v18.203] 原缺此 import，致 L341/406/434 的 requests.get 在被呼叫時 NameError→靜默落 fallback
 import pandas as pd
 from bs4 import BeautifulSoup
 
@@ -2349,6 +2351,11 @@ def _fetch_fund_single(code: str, force_refresh: bool = False,
     _page_type = page_type or (
         "yp010000" if _is_domestic_code(_code) else "yp010001"
     )
+    # [Auto-Fixed v18.203] _is_insurance_code 原本到函式後段（L2581）才賦值，但前面
+    # 「nav<10 短資料」的 Morningstar/TDCC fallback 分支（L2484+）已引用它 → 短資料時
+    # UnboundLocalError（正中「查無資料 / 新基金 / 抓取失敗」edge case）。提前計算一次。
+    _is_insurance_code = (not _is_domestic_code(_code) and
+                          any(_code.startswith(p) for p in _INSURANCE_SUBDOMAIN_HINTS))
     result = dict(
         fund_name="", full_key=_code, fund_code=_code,
         category="", risk_level="", dividend_freq="", currency="USD",
@@ -2578,8 +2585,7 @@ def _fetch_fund_single(code: str, force_refresh: bool = False,
     # v6.14: 保險公司代碼（TL/FL/CT 等）優先嘗試 TDCC OpenAPI
     # 原因：此類代碼的 MoneyDJ 保險子網域在 Streamlit Cloud 上全部被封鎖 IP，
     #       但 TDCC 是政府 API，無 IP 限制，可取得基金名稱與最新淨值。
-    _is_insurance_code = (not _is_domestic_code(_code) and
-                          any(_code.startswith(p) for p in _INSURANCE_SUBDOMAIN_HINTS))
+    # v18.203：_is_insurance_code 已於函式開頭計算（避免短資料 fallback 引用未賦值）
     if _is_insurance_code:
         _tdcc_early = _src_tdcc_meta(_code)
         if _tdcc_early.get("fund_name") or _tdcc_early.get("nav_latest"):
