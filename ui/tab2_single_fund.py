@@ -83,6 +83,8 @@ def render_single_fund_tab() -> None:
     from ui.helpers.holdings import _zh_holding
 
     st.markdown("## 🔍 單一基金深度分析")
+    from ui.helpers.story_nav import render_story_nav
+    render_story_nav("fund")
     st.caption("輸入 MoneyDJ 代碼或網址，即時抓取淨值 / 持股 / 配息 / 風險指標")
 
     # ── 輸入列（自動偵測境內/境外，移除 radio）────────────────────

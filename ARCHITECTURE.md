@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.193 / 2026-05-24** — Task2.2-step1 故事化動線。`app.py` `st.tabs` 重排為 **總經→組合→單一基金→資料診斷→說明書**（原單一基金在組合前、違反 spec 敘事；變數改語意名、render 函式不變）。新增 `ui/helpers/story_nav.py`（`story_nav_markdown` 純函式 + `render_story_nav`），三敘事 tab 標題下加「① 🌐 總經環境 → ② 📊 核心/衛星配置 → ③ 🔍 單一基金深掘」麵包屑（目前站藍色 highlight）。偏視覺故分階段：tab 內部區塊重排留作逐 tab 後續。新增 4 test，99 PASSED（含 full app.py exec）。
+
 > 🆕 **v18.192 / 2026-05-24** — Task2.1 教學化 expander。新增 `ui/helpers/metric_explainers.py`（`METRIC_EXPLAINERS` 8 條指標白話文 + 實戰意義；純函式 `explainer_markdown` + `render_metric_explainer` 渲染 `st.expander`、內容/渲染分離）。Tab2 風險指標（σ/Sharpe/Alpha/Beta）與 Tab3 核心/衛星 Hero 下方就近加「💡 這些數據代表什麼？」收合說明，**不動既有數據顯示、純加法**。兩 call site 經查非在 expander 內（不觸發巢狀 crash）。新增 5 test，109 PASSED。
 
 > 🆕 **v18.191 / 2026-05-24** — 讀取齊全。user「讀取資料時帳本一直缺資料」。以 user 實際 JSON 備份驗證：portfolio_funds(19)⨝t7_ledgers(19) pk 100% 對得上、`Ledger.from_dict` 19/19 含完整成本 → JSON 還原本身齊全；缺料發生在 Sheet 讀回（表單/帳本表以 portfolio_funds 為 spine 迭代、用 `fund_pk_str` 取 t7_ledgers 成本，保單分頁與 `_T7_State` 漂移時只在快照的基金看不到）。Fix：新增純函式 `reconcile_funds_with_ledgers`（`ui/helpers/portfolio_load.py`）— 帳本有但 spine 缺的部位用 `parse_pk` 補成 portfolio_funds 條目 + 回填 avg_nav/fx_avg/units/avg_nav_with_div（缺值才補）。接 `load_all_from_sheet` 與 `restore_from_json_bytes` 兩讀取路徑。實證模擬漂移 5/19→補回 19。新增 4 test，132 PASSED 零回歸。

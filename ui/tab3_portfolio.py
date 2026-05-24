@@ -144,6 +144,8 @@ def render_portfolio_tab() -> None:
     )
 
     st.markdown("## 📊 組合基金管理")
+    from ui.helpers.story_nav import render_story_nav
+    render_story_nav("portfolio")
     st.caption("加入多檔基金，即時計算核心/衛星配比、六因子評分、現金流估算")
 
     if "portfolio_funds" not in st.session_state:

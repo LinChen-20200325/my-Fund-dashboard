@@ -121,6 +121,8 @@ def render_macro_tab() -> None:
     from ui.helpers.data_registry import _update_data_registry
 
     st.markdown("## 🌐 總經位階評估 ＆ 拐點偵測")
+    from ui.helpers.story_nav import render_story_nav
+    render_story_nav("macro")
     st.caption("策略3 三層指標加權方法論 v7 — 領先×2 | 中級×1 | 次級×0.5")
 
     # v18.174：「🗺️ 全局指標關聯地圖」整塊搬到「說明書 §10」（純教學圖，無動態資料）
