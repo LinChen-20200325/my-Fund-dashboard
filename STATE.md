@@ -246,6 +246,13 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.211 — 程式碼健康度：清除 dead `mk_dashboard._render_kpi_cards`（2026-05-24）
+
+- [x] **動機**（user 選「清 dead code」）：承 v18.210 查出 `_render_kpi_cards`（長標籤 4 卡）自 v18.163 hero 上線後 grep 確認零 live caller，僅函式定義 + docstring 殘留
+- [x] **删 `ui/components/mk_dashboard.py:_render_kpi_cards`**（~36 行）：唯一渲染路徑已由 `portfolio_health.render_hero_kpi_cards` 取代；函式內聯計算、無共用私有 helper → 零連帶孤兒
+- [x] **連帶修 docstring**：`portfolio_health.py` 模組 docstring 移除指向已删符號的 `mk_dashboard._render_kpi_cards` 字樣（改描述 4 個 MK 標籤）；bonus 清 `portfolio_health.py` 未使用 import `typing.Any`（F401）
+- [x] **驗證** AST PASS（兩檔）；`import mk_dashboard` OK 無 dangling ref；repo 全域已無 `_render_kpi_cards` code 引用（僅 test docstring 歷史註記保留）；ruff：portfolio_health clean、mk_dashboard 僅餘 4 個 pre-existing E702（未動之代碼）；`pytest -m "not slow"` **606 passed / 1 skipped**；slow Tab3 KPI test PASS 零回歸
+
 ### v18.210 — 修 stale test：Tab3 KPI 卡 label 對齊 v18.163 hero 短標籤（2026-05-24）
 
 - [x] **動機**（user 選「修 stale test」）：`test_tab3_with_mock_fund_renders_kpi_cards` 自 v18.163 起紅燈、卡住整條 slow lane、§4 強制驗證能力失效

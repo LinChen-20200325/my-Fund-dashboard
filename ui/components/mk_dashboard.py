@@ -339,44 +339,6 @@ def _verdict_text(mk_class: str, health: str, momentum: str, zone: str,
 # ════════════════════════════════════════════════════════════
 # §2 UI 分組 (Grouping) — KPI 卡片 + 三 Sub-Tab
 # ════════════════════════════════════════════════════════════
-def _render_kpi_cards(df: pd.DataFrame) -> None:
-    """頂部四張卡片：撿便宜雷達 / 留校查看警示 / 停利提醒 / 配置比例。"""
-    if df.empty:
-        return
-    n_buy = int(df["Price_Zone"].isin(["Buy_Zone", "Buy_Zone_Deep"]).sum())
-    n_warn = int(df["Health_Check"].isin(["Sharpe_Warning", "Warning", "Weak"]).sum())
-    if "Principal_Erosion" in df.columns:
-        n_warn += int(((df["MK_Class"] == "Core") &
-                       (df["Principal_Erosion"] == "Eroding")).sum())
-    n_take = int(((df["Price_Zone"] == "Take_Profit") &
-                  (df["MK_Class"] == "Satellite")).sum())
-
-    n_total = int((df["MK_Class"].isin(["Core", "Satellite"])).sum())
-    n_core = int((df["MK_Class"] == "Core").sum())
-    n_sat = int((df["MK_Class"] == "Satellite").sum())
-    if n_total > 0:
-        pct_core = round(n_core / n_total * 100)
-        pct_sat = round(n_sat / n_total * 100)
-        gap = pct_core - 80  # 與建議 80/20 落差
-        ratio_label = f"核心 {pct_core}% / 衛星 {pct_sat}%"
-        delta_str = f"{gap:+d}% vs 策略3 80/20" if gap else "符合 策略3 80/20"
-    else:
-        ratio_label = "—"
-        delta_str = None
-
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🟢 撿便宜雷達", f"{n_buy} 檔",
-              help="股價跌至 -1σ / -2σ 以下，符合分批進場條件")
-    c2.metric("🔴 留校查看警示", f"{n_warn} 檔",
-              delta=f"-{n_warn}" if n_warn else None, delta_color="inverse",
-              help="夏普<0 / 賺息賠本 / 跌破季線 三類紅黃燈合計")
-    c3.metric("💰 停利提醒（衛星）", f"{n_take} 檔",
-              help="衛星標的突破布林上軌，建議部分減碼鎖利")
-    c4.metric("⚖️ 配置比例", ratio_label, delta=delta_str,
-              delta_color="off",
-              help="策略3 建議核心 80% / 衛星 20%；偏離過大代表結構失衡")
-
-
 def _render_buckets_diagnostic(df: pd.DataFrame) -> None:
     """v18.158：當「撿便宜雷達 / 留校查看警示 / 停利提醒」三籃子全為 0 時，
     加 expander 列出每檔 fund 的三標籤 (Price_Zone / Health_Check / Principal_Erosion)，

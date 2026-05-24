@@ -1,12 +1,10 @@
 """v18.163 PR：組合健康度 KPI helper（純函式）。
 
-整合 mk_dashboard `_render_kpi_cards` 的 4 個 MK 標籤指標
+整合 4 個 MK 標籤指標（撿便宜雷達 / 留校查看 / 停利提醒 / 配置比例）
 + tab3 真實收益矩陣的 4 個現金流指標，
 產出統一的 6 維度 KPI dict 給 Tab3 頂部 hero 用。
 """
 from __future__ import annotations
-
-from typing import Any
 
 import pandas as pd
 
