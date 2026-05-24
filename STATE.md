@@ -246,6 +246,16 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.209 — 程式碼健康度：清除 dead `analyze_fund_json` + 連帶孤兒（2026-05-24）
+
+- [x] **動機**（user 選「清 analyze_fund_json dead code」）：v18.207 Tab2 三 AI 整併後，`analyze_fund_json` 已無任何 live caller（僅函式定義 + app.py 未使用 import + prompt 註解殘留）
+- [x] **删 `services/ai_service.py:analyze_fund_json`**（~128 行）：唯一 caller 已於 v18.207 移除；無 test 直接覆蓋
+- [x] **删 `_format_news_for_fund_ai`**（~26 行）：grep 確認僅 `analyze_fund_json` 使用、無其他 caller / test → 連帶清除（`_format_fund_holdings` 因 mk_advisor 共用 → 保留）
+- [x] **删孤兒 import**（ai_service.py）：`FUND_JSON_SCHEMA_HINT`/`fund_analysis_to_markdown`/`parse_llm_json`（整段 ai_models import）+ `build_fund_json_prompt`/`build_fund_json_structured_prompt` — 删 ai_service 引用即可；函式本體仍在 ai_models/ai_prompts 且 `test_ai_models.py`/`test_ai_prompts.py` 仍覆蓋（未動）
+- [x] **删 app.py 整段死 import**：`from services.ai_service import (analyze_fund_json, analyze_macro_structured, analyze_portfolio_mk_advisor, event_impact_analysis, build_stale_flags)` 五個在 app.py 全未使用（425 行收口後僅 tabX 模組直接 import 使用）、且無從 app re-export → 整塊移除（bonus 清理，同類 dead import）
+- [x] **驗證** AST PASS（ai_service.py / app.py）；ai_service.py 無 dangling ref；`pytest -m "not slow"` 606 passed / 1 skipped；slow AppTest 全綠（app.py 入口 + ai_service 核心）
+- [ ] **後續候選**：`build_fund_json_prompt`/`build_fund_json_structured_prompt` + `FUND_JSON_SCHEMA_HINT`/`fund_analysis_to_markdown`/`parse_llm_json` 現為「有 test 但無 live caller」的閒置工具組 — 若確定不重啟 fund JSON AI，可連同其 test 一併下架（需 user 拍板，故未動）
+
 ### v18.208 — Tab2 唯一 AI 快照加料：σ絕對位階(HWM) / 賣點 / 吃本金 coverage / 經理費（2026-05-24）
 
 - [x] **承 v18.207**（user 選「強化 ④ AI 解盤內容」）：唯一 `render_ai_summary_widget` 的全章節快照補進 4 項 Tab 內已顯示但 AI 先前看不到的旗艦訊號

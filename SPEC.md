@@ -430,6 +430,24 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AS 程式碼健康度：清除 dead `analyze_fund_json` 及連帶孤兒（v18.209 新增）
+
+**動機**（user 選「清 analyze_fund_json dead code」）：§3-AQ（v18.207）把 Tab2 三 AI 整併為唯一 widget 後，`analyze_fund_json` 已無任何 live caller，屬死碼。
+
+**範圍盤點（先 grep 全 blast radius 再動手）**：
+- `services/ai_service.py:analyze_fund_json`（~128 行）→ 删（唯一 caller 已於 v18.207 移除、無 test 直接覆蓋）。
+- `_format_news_for_fund_ai`（~26 行）→ 連帶删（grep 確認僅 `analyze_fund_json` 使用）。`_format_fund_holdings` 因 `analyze_portfolio_mk_advisor` 共用 → **保留**。
+- ai_service 孤兒 import：`FUND_JSON_SCHEMA_HINT` / `fund_analysis_to_markdown` / `parse_llm_json` / `build_fund_json_prompt` / `build_fund_json_structured_prompt` → 删 ai_service 的 import（這些函式本體仍在 `ai_models`/`ai_prompts`、且 `test_ai_models.py`/`test_ai_prompts.py` 仍覆蓋，**未動本體與 test**）。
+- **Bonus**：`app.py` 的 `from services.ai_service import (...)` 整段 5 個名稱（analyze_fund_json / analyze_macro_structured / analyze_portfolio_mk_advisor / event_impact_analysis / build_stale_flags）在 425 行收口後**全未使用**、且無從 app re-export（tabX 模組各自直接 import）→ 同類 dead import 整塊移除。
+
+**安全核對**：删前 grep 確認 (1) 無外部模組 `from services.ai_service import` 上述符號、(2) `_format_news_for_fund_ai` 無其他 caller/test、(3) 5 個 prompt/model 符號的 test 是從來源模組 import 而非 ai_service。
+
+**驗證**：AST PASS（ai_service.py / app.py）、ai_service.py 無 dangling ref、`pytest -m "not slow"` 606 passed / 1 skipped、slow AppTest 全綠。
+
+**後續候選（未動，待 user 拍板）**：`build_fund_json_prompt`/`build_fund_json_structured_prompt` + `FUND_JSON_SCHEMA_HINT`/`fund_analysis_to_markdown`/`parse_llm_json` 現為「有 test 但無 live caller」的閒置 fund-JSON 工具組；若確定不重啟可連同 test 一併下架。
+
+---
+
 ### §3-AR Tab2 唯一 AI 快照加料：σ絕對位階 / 賣點 / 吃本金 / 經理費（v18.208 新增）
 
 **需求**（user 選「強化 ④ AI 解盤內容」）：v18.207 整併後的唯一 AI，快照再補進 Tab 內已顯示、但 AI 先前看不到的旗艦訊號。
