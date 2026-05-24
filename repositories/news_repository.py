@@ -253,6 +253,60 @@ def filter_news_by_keywords(news: list, keywords) -> list:
     return out
 
 
+_GOOGLE_NEWS_RSS = "https://news.google.com/rss/search"
+
+
+def fetch_stock_news(query: str, max_items: int = 3,
+                     lang: str = "zh-TW", region: str = "TW") -> list:
+    """v18.206：對「特定個股 / 關鍵字」用 Google News RSS 搜尋近期新聞（走 NAS proxy）。
+
+    與 fetch_market_news（廣義財經 RSS）不同：這裡針對單一持股名查詢，台股/中文名
+    也抓得到。回傳 [{title, summary, source, published, url, is_systemic}]；失敗回 []。
+    """
+    q = str(query or "").strip()
+    if not q:
+        return []
+    try:
+        import feedparser as _fp
+    except ImportError:
+        return []
+    try:
+        from infra.proxy import fetch_url as _fetch_url
+    except Exception:
+        _fetch_url = None
+
+    _params = {"q": q, "hl": lang, "gl": region,
+               "ceid": f"{region}:{lang.split('-')[0]}"}
+    try:
+        if _fetch_url is not None:
+            _r = _fetch_url(_GOOGLE_NEWS_RSS, params=_params, timeout=12, retries=2)
+            if _r is None or not getattr(_r, "content", b""):
+                return []
+            d = _fp.parse(_r.content)
+        else:
+            from urllib.parse import urlencode
+            d = _fp.parse(f"{_GOOGLE_NEWS_RSS}?{urlencode(_params)}")
+    except Exception:
+        return []
+
+    out = []
+    for e in getattr(d, "entries", [])[:max_items]:
+        _title = getattr(e, "title", "")
+        if not _title:
+            continue
+        _srcobj = getattr(e, "source", None)
+        _src = (getattr(_srcobj, "title", "") if _srcobj is not None else "") or "Google News"
+        out.append({
+            "title":       _title,
+            "summary":     getattr(e, "summary", "")[:200],
+            "source":      _src,
+            "published":   getattr(e, "published", "")[:25],
+            "url":         getattr(e, "link", ""),
+            "is_systemic": False,
+        })
+    return out
+
+
 def fetch_macro_news(asset_class: str = "", max_per_feed: int = 5) -> list:
     """v5.0 Task3 接口：抓財經新聞並依資產類別過濾。
 

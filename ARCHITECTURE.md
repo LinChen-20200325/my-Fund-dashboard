@@ -745,6 +745,8 @@ PROXY_URL      = "http://user:pass@yourname.synology.me:3128"  # 必填，否則
 
 > 🆕 **v18.155 / 2026-05-20 (PR B.5)** — `list_user_sheets` 過濾已刪除 Sheets。原本 gspread `list_spreadsheet_files()` 會回傳 trashed sheets（user 截圖出現重複 / 殭屍項目）。改成自己打 Drive v3 API（mirror `list_user_folders`）帶 `q='mimeType="...spreadsheet" and trashed=false'`，外加 `supportsAllDrives` / `includeItemsFromAllDrives` 與 paging。
 
+> 🆕 **v18.206 / 2026-05-24** — 個股新聞面升級：逐股 Google News 搜尋。v18.205 只濾廣義 RSS → 台股/冷門持股「命中 0」。新增 `news_repository.fetch_stock_news(query, max_items)`：Google News RSS 搜尋（`news.google.com/rss/search`，hl=zh-TW）走 `infra.proxy.fetch_url` + feedparser，中/英文名都抓。Tab2 個股新聞面改按鈕「📡 抓個股新聞」→ 前 6 大持股各查 → session 快取 → 顯示真實個股新聞 + AI（expander 外 sibling）。逐股 N 次網路故按鈕觸發。新增 4 test，606 passed。沙箱擋 Google→須真機/proxy 驗抓取。
+
 > 🆕 **v18.205 / 2026-05-24** — 單一基金「📰 個股新聞面」。`news_repository` 加 `filter_news_by_keywords(news, keywords)`（純過濾、命中任一、無 fallback）。Tab2 持股分析後新增 📰 個股新聞面 expander：前10大持股名（英文+`_zh_holding`中文+首 token）比對**快取** news_items（零額外網路）→ 列命中個股新聞（標注持股/來源/連結）；命中時在 expander **外**（避巢狀）掛 `render_ai_summary_widget`(tab2_stknews) 做 AI 新聞面分析。RSS 為廣義新聞→大型權值股命中率高、冷門低→不命中顯示友善提示。新增 3 test，602 passed。
 
 > 🆕 **v18.204 / 2026-05-24** — 故事化 Tab1/Tab2 內部故事站（呼應 Tab3 v18.195）。Tab2（success path flat indent16，4 站）插入 `### ① 基本資料&淨值趨勢 / ② 買賣點信號 / ③ 風險指標&配息 / ④ AI 深度解盤`。Tab1（內部子分頁 tab_main，indent12）insert `### ① 總經位階評估` + prefix 既有 header `② 🎯 全域導航塔 / ③ 📡 景氣拐點監控`（零風險）；AI widget 本即自帶 expander 章節。Tab1 資本防線/四大類別深埋 column → 不硬塞（沙箱無法驗視覺）；Tab5/6 不在敘事主線。純 markdown 加/改、零區塊搬移。599 passed。
