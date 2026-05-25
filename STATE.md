@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.218 — 修：只設多把 key（沒設單把）導致 ❌ Gemini / 缺金鑰 banner（2026-05-25）
+
+- [x] **症狀**（user 截圖）：secrets 放了多把 key，但 sidebar 顯示 ❌ Gemini + 紅 banner「缺少必要金鑰：GEMINI_API_KEY」
+- [x] **根因**：sidebar 指示燈（app.py:234）、`_check_secrets`（162）、各 Tab 的 `if GEMINI_KEY` 閘門全看**單把** `GEMINI_API_KEY`；user 只設了 `GEMINI_API_KEYS`/編號式 → 單把為空 → 全部判定未設定
+- [x] **修 `app.py:_load_keys`**：鏡像多把到 env 後，若單把 `GEMINI_API_KEY` 為空但池子非空 → 拿 `get_gemini_keys()[0]` 補進單把（向後相容、池子仍完整供輪替）
+- [x] **驗證** AST/import（無循環）OK；ruff 零新增（112=112）；模擬「只設複數」→ 單把補成池首、池仍含全部；`pytest -k "smoke or app or ai"` 173 passed
+- [x] **APP_VERSION 註記**：`v18.2_CoreProtocol` 是 app.py:100 硬編字串、非實際版本 → 不能用它判斷部署新舊
+
 ### v18.217 — 多 Gemini key 自動輪替（分散免費額度 + 防斷）（2026-05-25）
 
 - [x] **需求**（user）：想用多個帳號的 Gemini key 分流 token / 免費額度 → 選「自動輪替」方案

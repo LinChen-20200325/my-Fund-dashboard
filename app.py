@@ -145,6 +145,14 @@ def _load_keys():
         _gv = st.secrets.get(_gk, "") or os.environ.get(_gk, "")
         if _gv:
             os.environ[_gk] = _gv
+    # v18.218: 只設多把（GEMINI_API_KEYS / _1..）卻沒設單把 GEMINI_API_KEY 時，
+    # 拿池子第一把補進單把 — 讓 sidebar 指示燈 / 各 Tab 的單把 key 檢查照常通過。
+    if not gem:
+        from services.ai_service import get_gemini_keys  # noqa: PLC0415
+        _pool = get_gemini_keys()
+        if _pool:
+            gem = _pool[0]
+            os.environ["GEMINI_API_KEY"] = gem
     # v18.113 AI-3: 多 LLM provider fallback chain — 額外載 Anthropic / OpenAI keys
     # 有設就匯出到 env，infra/llm.py::call_llm 會自動讀；缺則該 provider 在 chain 中 skip
     for _llm_key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
