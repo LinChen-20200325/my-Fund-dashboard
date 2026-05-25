@@ -192,6 +192,11 @@ def render_portfolio_tab() -> None:
         render_mk_war_room(st.session_state.portfolio_funds)
         st.divider()
 
+        # v18.213：基金體檢表（郭老師「挑三揀四」PK 同類型，揪優等生 / 汰弱候選）
+        from ui.helpers.fund_checkup import render_fund_checkup
+        render_fund_checkup(st.session_state.portfolio_funds)
+        st.divider()
+
     # ════════════════════════════════════════════════════════════════
     # 🆕 v18.22 保單視圖 P1.3：保單管理 + 保單分組視圖（top-level expander）
     # v18.75：OAuth 設定解析 + 登入 UI 已 hoist 到 sidebar；此處僅保留 Sheet 設定

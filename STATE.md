@@ -246,6 +246,16 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.213 — 新增「基金體檢表」：郭老師挑三揀四 PK 同類型（揪優等生 / 汰弱候選）（2026-05-25）
+
+- [x] **動機**（user 需求）：依郭老師「挑三揀四」法則，把每檔基金含息報酬與**同類型平均** PK，打敗同類＝🏆 優等生、明顯落後＝⚠️ 汰弱候選
+- [x] **新檔** `ui/helpers/fund_checkup.py`（純函式 + 單一 render）：`build_checkup_dataframe`（依 code 去重）/ `_extract_peer_1y`（從 `risk_metrics.peer_compare` 取「同類型平均」）/ `_grade`（超額 ≥+2🏆 / ±2內🟡 / ≤−2⚠️）/ `_style_checkup`（優等生綠底·汰弱紅底）/ `render_fund_checkup`
+- [x] **接線** `ui/tab3_portfolio.py`：MK 戰情室下方新增 expander「🩺 基金體檢表」（user 拍板放 Tab3 expander，避巢狀 expander 用 markdown 取代）
+- [x] **欄位** 近1M/3M/6M/1Y含息（perf 優先退 metrics）+ 同類平均(1Y) + 超額(pp) + 夏普 + 年化波動 + 買點燈號（重用 `tag_price_zone`）+ 體檢判定
+- [x] **資料邊界**（user 拍板「以同類 1Y 為主」）：同類平均約 3 成基金抓不到 → ⬜ 不評；郭老師另兩標準（成分股 ROE/EPS、規模流動性）資料源無法取得 → 未納入並於 UI 誠實告知；1Y 含息沿用全 app 一致的 `compute_1y_total_return`
+- [x] **驗證** AST PASS（兩檔）+ import OK + ruff `All checks passed`；mock 邏輯測試（分級門檻 / peer 抽取 / 去重 / styler html 上色）全綠；`pytest -m "not slow"` **606 passed, 1 skipped** 零回歸
+- [x] **未驗** 沙箱無瀏覽器 → 表格視覺未親驗，僅 AST/import/styler 計算驗證
+
 ### v18.212 — 故事化 Tab5/Tab6：補站序標題（呼應 Tab1-3，補完 v18.204「未做」）（2026-05-24）
 
 - [x] **動機**（user 選「輕量站序」）：v18.204 曾把 Tab5/Tab6 視為「工具/說明性質不在敘事主線」刻意跳過；user 拍板補完 → 採 v18.204 同款零風險做法（純 markdown 文字、不動邏輯）

@@ -430,6 +430,35 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AT 基金體檢表：郭老師「挑三揀四」PK 同類型（v18.213 新增）
+
+**需求**（user）：依郭老師「挑三揀四」法則，逐檔把基金含息報酬與**同類型平均** PK，打敗同類＝🏆 優等生（抱緊滾雪球）、明顯落後＝⚠️ 汰弱候選。
+
+**放置 / 判定基準**（user 拍板）：Tab3 expander（MK 戰情室下方，`tab3_portfolio.py:render_mk_war_room` 後）；優等生判定「以同類 1Y 為主」。
+
+**新檔** `ui/helpers/fund_checkup.py`（純函式 + 單一 render，無 `@st.cache_data`）：
+
+```python
+build_checkup_dataframe(portfolio_funds) -> pd.DataFrame  # 依 code 去重；12 欄
+_extract_peer_1y(fund) -> (peer_ret|None, label)          # 取 risk_metrics.peer_compare「同類型平均」首個數值
+_ret_1y_total(fund) -> float|None                          # 沿用 compute_1y_total_return，退 perf["1Y"]/metrics
+_period_ret(fund, perf_key, metric_key)                    # perf 優先退 calc_metrics（1M/3M/6M）
+_grade(ret_1y, peer_1y) -> (excess|None, 判定文字)         # 超額≥+2🏆 / ±2內🟡 / ≤−2⚠️ / 缺資料⬜
+_style_checkup(df)                                         # 🏆綠底 / ⚠️紅底 / 超跌價深綠底
+render_fund_checkup(portfolio_funds) -> None               # expander：caption + 白話文 + 統計列 + dataframe（依超額降序）
+```
+
+**欄位**：代碼 / 標的名稱 / 近1M / 近3M / 近6M / 近1Y含息 / 同類平均(1Y) / 超額(pp) / 夏普 / 年化波動 / 買點（重用 `mk_dashboard.tag_price_zone` 燈號）/ 體檢判定。
+
+**資料邊界（誠實告知，§4）**：
+- 同類平均取自 MoneyDJ 績效評比頁 `risk_metrics.peer_compare`，約 3 成基金抓不到 → ⬜ 不評（不臆造）。
+- 郭老師另兩標準（成分股 ROE>15%/EPS 成長、規模流動性）資料源無法取得 → **未納入**並於 UI 白話文標明；買賣點細節仍在 MK 戰情室。
+- 同類平均可能為年平均報酬、與本基金含息基準略有差異 → tooltip 註明「僅供方向參考」。
+
+**驗證**：AST + import + ruff `All checks passed`；mock 邏輯測試（分級門檻 / peer 抽取 / 去重 / styler html 上色）全綠；`pytest -m "not slow"` 606 passed / 1 skipped 零回歸（沙箱無瀏覽器、表格視覺未親驗）。
+
+---
+
 ### §3-AS 程式碼健康度：清除 dead `analyze_fund_json` 及連帶孤兒（v18.209 新增）
 
 **動機**（user 選「清 analyze_fund_json dead code」）：§3-AQ（v18.207）把 Tab2 三 AI 整併為唯一 widget 後，`analyze_fund_json` 已無任何 live caller，屬死碼。
