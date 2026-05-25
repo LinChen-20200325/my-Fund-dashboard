@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.220 — 抓取 fail-fast：read-timeout 不在 urllib3 層重試（砍三層重試放大）（2026-05-25）
+
+- [x] **承 v18.219**（user：「下一輪」做 timeout/retry fail-fast）
+- [x] **根因**（親驗）：抓取有**三層重試疊加** — ①`infra/proxy.py:make_retry_session` urllib3 `Retry(total=3)`（連 read-timeout 都重試）②`fetch_url` 外層 `retries` 迴圈（每次逾時 sleep 2s）③失敗再降級直連一次 → 慢/掛的來源最糟 `3×retries×timeout`（25s 源 ~75–150s）
+- [x] **修法**（單一函式、低風險）：`make_retry_session` 改 `Retry(total=2, connect=1, read=0, status=2)` — **read-timeout 不在 urllib3 層重試**（交給外層迴圈 + 直連降級），但**保留 5xx 重試 2 次**的韌性；精準砍掉「逾時被三層放大」
+- [x] **效益**：落到後段/抓不到的基金不再被 read-timeout 層層放大；stop-on-first-success 的正常基金不受影響
+- [x] **驗證** AST OK + Retry 物件確認（read=0/status=2）；ruff 2=2 零新增；`pytest -k "proxy or fetch or repository"` 70 passed；`pytest -m "not slow"` **611 passed**/1 skipped 零回歸
+- [x] **未動**（保守）：各來源的 `timeout=25` 數值、外層 retries 次數維持原樣（要再砍再議）
+
 ### v18.219 — 批次載入基金並行化：序列 → ThreadPoolExecutor(4)（2026-05-25）
 
 - [x] **症狀**（user）：基金儀表板「下載 + 生產資料」很慢

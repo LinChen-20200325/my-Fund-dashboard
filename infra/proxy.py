@@ -52,9 +52,15 @@ def get_proxy_config() -> "dict | None":
 
 
 def make_retry_session() -> requests.Session:
-    """5xx 指數退避 Session（最多重試 3 次，backoff 0.3/0.6/1.2s）。"""
+    """5xx 指數退避 Session。
+
+    v18.220 fail-fast：`read=0` — read-timeout 不在 urllib3 層重試（交給外層
+    fetch_url 迴圈 + 直連降級處理），避免「逾時被三層重試放大」拖慢抓取；
+    `status=2` 仍保留伺服器暫時 5xx（500/502/503/504）的重試韌性。
+    """
     _retry = Retry(
-        total=3, backoff_factor=0.3,
+        total=2, connect=1, read=0, status=2,
+        backoff_factor=0.3,
         status_forcelist=[500, 502, 503, 504],
         raise_on_status=False,
     )
