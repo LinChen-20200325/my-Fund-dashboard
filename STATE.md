@@ -246,6 +246,18 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.224 — 全球宏觀流動性預警引擎：數據獲取層（四深水區因子）（2026-05-26）
+
+- [x] **需求**（user 角色設定）：構建 Global Macro Liquidity Warning Engine，四因子 XCCY/Carry/SSR/MOVE-VIX；本輪先做「數據獲取層」
+- [x] **拍板**（AskUserQuestion）：XCCY 用代理指標頂著（無免費真源）、Stablecoin 走 DefiLlama
+- [x] **新 `repositories/macro_repository.py:fetch_defillama_stablecoin_mcap`**：DefiLlama `stablecoincharts/all` 穩定幣總市值歷史（免 key、走 NAS proxy、TTL 30min、加總 totalCirculatingUSD）
+- [x] **新 `services/liquidity_engine.py`**（Service 層，委派 macro_repository 抓取）：
+  - `rolling_zscore`（滾動 252d，樣本<60/std=0/inf-nan → None 邊界防禦）、`_sig_color_score`（z→signal，invert 方向）
+  - `build_xccy_proxy`（FRED DTWEXBGS 20D 動能，誠實標註代理）、`build_carry_unwind`（DEXJPUS/DEXSZUS 5D 升值取極端者）、`build_ssr`（DefiLlama 穩定幣 + BTC-USD×近似供給 → SSR）、`build_move_vix`（^MOVE/^VIX 比值）
+  - `fetch_liquidity_factors`（聚合四因子，try/except 失敗隔離）；全產出與 macro_service 同款 R[KEY] dict（含 series 週頻尾）
+- [x] **驗證** AST/import OK；ruff 新檔全綠、macro_repository 9=9 零新增；新 `test_liquidity_engine.py` **14 passed**（Z邊界/方向/四建構/空源/聚合/失敗隔離，全 mock 不打網路）；`pytest -m "not slow"` **625 passed**/1 skipped 零回歸
+- [ ] **下一階段**（未做）：因子融合層（四因子合成風險分數 + `.clip(-3,3)` + 權重）、UI 接線、當前宏觀研判
+
 ### v18.223 — 修：總經載入無聲失敗（proxy 逾時不降級直連 + Tab1 無錯誤處理）（2026-05-26）
 
 - [x] **症狀**（user）：總經按「載入」顯示「正在下載」後**突然消失、沒資料、沒錯誤**

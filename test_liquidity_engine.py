@@ -1,0 +1,143 @@
+"""test_liquidity_engine.py — v18.224 流動性預警引擎數據獲取層測試。
+
+全部 mock repositories 抓取器，不打網路；驗證 Z-Score 邊界、dict schema、
+四因子建構與失敗隔離。
+"""
+import numpy as np
+import pandas as pd
+
+import services.liquidity_engine as le
+
+
+def _dates(n: int) -> pd.DatetimeIndex:
+    return pd.date_range(end="2026-05-20", periods=n, freq="D")
+
+
+# ── rolling_zscore：邊界防禦 ──────────────────────────────────
+def test_zscore_normal_spike_high() -> None:
+    s = pd.Series([1.0] * 250 + [1.0, 1.1, 0.9, 1.0, 5.0])  # 末點暴衝
+    z = le.rolling_zscore(s)
+    assert z is not None and z > 2
+
+
+def test_zscore_insufficient_samples_none() -> None:
+    assert le.rolling_zscore(pd.Series([1.0, 2.0, 3.0])) is None   # < 60
+
+
+def test_zscore_flat_line_zero_std_none() -> None:
+    assert le.rolling_zscore(pd.Series([3.14] * 200)) is None      # std=0
+
+
+def test_zscore_handles_inf_nan() -> None:
+    s = pd.Series([1.0] * 100 + [np.inf, np.nan] + [2.0] * 100)
+    assert le.rolling_zscore(s) is not None   # inf/nan 被清掉不崩潰
+
+
+# ── _sig_color_score：方向與門檻 ─────────────────────────────
+def test_sig_high_z_is_red() -> None:
+    assert le._sig_color_score(2.5)[0] == "🔴"
+    assert le._sig_color_score(2.5)[2] == -1
+
+
+def test_sig_invert_high_z_is_green() -> None:
+    assert le._sig_color_score(2.5, invert=True)[0] == "🟢"
+
+
+def test_sig_none_is_blank_neutral() -> None:
+    assert le._sig_color_score(None) == ("⬜", "#666", 0)
+
+
+# ── 四因子建構（mock 抓取器）────────────────────────────────
+def _fred_df(series_id, api_key, n=250):
+    base = {"DTWEXBGS": 120.0, "DEXJPUS": 150.0, "DEXSZUS": 0.9}.get(series_id, 100.0)
+    rng = np.linspace(0, 1, 300)
+    vals = base * (1 + 0.05 * np.sin(rng * 20) + 0.1 * rng)
+    return pd.DataFrame({"date": _dates(300), "value": vals})
+
+
+def _yf(ticker, range_="2y", interval="1d"):
+    base = {"^MOVE": 110.0, "^VIX": 16.0, "BTC-USD": 60000.0}.get(ticker, 50.0)
+    rng = np.linspace(0, 1, 300)
+    vals = base * (1 + 0.1 * np.sin(rng * 15) + 0.05 * rng)
+    return pd.Series(vals, index=_dates(300), name=ticker)
+
+
+def _stable():
+    rng = np.linspace(0, 1, 300)
+    return pd.Series(150e9 * (1 + 0.2 * rng), index=_dates(300), name="stablecoin_mcap")
+
+
+_REQUIRED_KEYS = {"name", "value", "prev", "unit", "type", "desc",
+                  "signal", "color", "score", "weight", "series", "zscore"}
+
+
+def _assert_schema(entry: dict) -> None:
+    assert _REQUIRED_KEYS <= set(entry), set(entry)
+    assert entry["signal"] in {"🟢", "🟡", "🔴", "⬜"}
+    assert isinstance(entry["series"], pd.Series)
+    assert isinstance(entry["score"], int) and entry["score"] in (-1, 0, 1)
+
+
+def test_build_xccy_proxy(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_fred", _fred_df)
+    e = le.build_xccy_proxy("KEY")
+    assert e is not None
+    _assert_schema(e)
+    assert "代理" in e["name"] and "代理" in e["desc"]   # 誠實標註
+
+
+def test_build_carry_unwind(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_fred", _fred_df)
+    e = le.build_carry_unwind("KEY")
+    assert e is not None
+    _assert_schema(e)
+
+
+def test_build_move_vix(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_yf_close", _yf)
+    e = le.build_move_vix()
+    assert e is not None
+    _assert_schema(e)
+    assert e["value"] > 0   # MOVE/VIX 比值為正
+
+
+def test_build_ssr(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_defillama_stablecoin_mcap", _stable)
+    monkeypatch.setattr(le, "fetch_yf_close", _yf)
+    e = le.build_ssr()
+    assert e is not None
+    _assert_schema(e)
+
+
+# ── 邊界：抓不到資料 → None，不崩潰 ─────────────────────────
+def test_builders_empty_source_returns_none(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_fred", lambda *a, **k: pd.DataFrame())
+    monkeypatch.setattr(le, "fetch_yf_close", lambda *a, **k: pd.Series(dtype=float))
+    monkeypatch.setattr(le, "fetch_defillama_stablecoin_mcap",
+                        lambda: pd.Series(dtype=float))
+    assert le.build_xccy_proxy("K") is None
+    assert le.build_carry_unwind("K") is None
+    assert le.build_move_vix() is None
+    assert le.build_ssr() is None
+
+
+# ── 入口：聚合 + 失敗隔離 ───────────────────────────────────
+def test_fetch_liquidity_factors_aggregates(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_fred", _fred_df)
+    monkeypatch.setattr(le, "fetch_yf_close", _yf)
+    monkeypatch.setattr(le, "fetch_defillama_stablecoin_mcap", _stable)
+    out = le.fetch_liquidity_factors("KEY")
+    assert set(out) == {"XCCY_PROXY", "CARRY_UNWIND", "SSR", "MOVE_VIX"}
+
+
+def test_fetch_liquidity_factors_isolates_failure(monkeypatch) -> None:
+    monkeypatch.setattr(le, "fetch_fred", _fred_df)
+    monkeypatch.setattr(le, "fetch_yf_close", _yf)
+
+    def _boom():
+        raise RuntimeError("defillama down")
+
+    monkeypatch.setattr(le, "fetch_defillama_stablecoin_mcap", _boom)
+    out = le.fetch_liquidity_factors("KEY")
+    assert "SSR" not in out                       # 失敗的略過
+    assert {"XCCY_PROXY", "CARRY_UNWIND", "MOVE_VIX"} <= set(out)   # 其餘正常

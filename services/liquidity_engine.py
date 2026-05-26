@@ -1,0 +1,260 @@
+"""services/liquidity_engine.py — Global Macro Liquidity Warning Engine（數據獲取層 v1）
+
+四個「深水區」流動性因子的原始抓取 + 滾動 252 日 Z-Score，產出與
+macro_service 一致的 indicator dict（name/value/prev/unit/type/date/desc/
+signal/color/score/weight/series），可直接流進既有 UI / 研判層。
+
+因子（對應四大維度）
+  XCCY_PROXY  離岸美元荒（代理：FRED 廣義美元指數 DTWEXBGS 20D 動能）
+  CARRY_UNWIND  套利平倉（JPY/CHF 對美元短線升值幅度，急升=避險去槓桿）
+  SSR  影子/數位流動性（DefiLlama 穩定幣總市值 → BTC 市值 / 穩定幣市值）
+  MOVE_VIX  跨資產波動率背離（^MOVE / ^VIX 比值，債市劇震 vs 股市樂觀）
+
+工程規範（CLAUDE.md §1）：
+- 滾動視窗 252 交易日 Z-Score（去歷史絕對值極值干擾）
+- 邊界防禦：樣本不足 / 分母為零（平線）/ inf → 回 None，不崩潰
+- 因子融合（合成風險分數 + .clip(-3,3)）為下一階段，本檔只負責「取數 + 標準化」
+
+注意：本檔屬 Service Layer，HTTP 抓取一律委派 repositories.macro_repository
+（走 NAS proxy + TTL 快取），不自行直連。
+"""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from repositories.macro_repository import (
+    fetch_defillama_stablecoin_mcap,
+    fetch_fred,
+    fetch_yf_close,
+)
+
+WINDOW = 252                     # 滾動標準化視窗（交易日）
+_MIN_SAMPLES = 60                # 樣本少於此不計算 Z-Score（邊界防禦）
+_BTC_SUPPLY_APPROX = 19_800_000  # BTC 流通量近似（~固定）→ 市值 ≈ 價格 × 供給
+
+
+def rolling_zscore(series: pd.Series, window: int = WINDOW) -> "float | None":
+    """最後一點相對滾動視窗的 Z-Score；樣本不足 / 標準差為零 → None。"""
+    if series is None:
+        return None
+    s = series.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(s) < _MIN_SAMPLES:
+        return None                      # 邊界：歷史不足滾動視窗
+    w = s.tail(window)
+    sd = float(w.std())
+    if sd == 0 or np.isnan(sd):
+        return None                      # 邊界：分母為零（價格平線）
+    return float((float(w.iloc[-1]) - float(w.mean())) / sd)
+
+
+def _sig_color_score(z: "float | None", *, hi: float = 2.0, mid: float = 1.0,
+                     invert: bool = False) -> tuple:
+    """由 Z-Score 給 (signal, color, score)。
+
+    invert=False：z 越高越危險（🔴）。invert=True：z 越低越危險。
+    score：+1 健康 / 0 中性 / -1 警示，供研判層加權。
+    """
+    if z is None:
+        return "⬜", "#666", 0            # 無資料 → 不評
+    zz = -z if invert else z
+    if zz >= hi:
+        return "🔴", "#f44336", -1
+    if zz >= mid:
+        return "🟡", "#ff9800", 0
+    return "🟢", "#00c853", 1
+
+
+def _weekly_tail(series: pd.Series, n: int = 260) -> pd.Series:
+    """週頻重採樣 + 取尾，與 macro_service 既有 series 欄一致（供趨勢圖）。"""
+    s = series.replace([np.inf, -np.inf], np.nan).dropna()
+    if s.empty:
+        return s
+    try:
+        return s.resample("W").last().dropna().tail(n)
+    except (TypeError, ValueError):
+        return s.tail(n)
+
+
+# ──────────────────────────────────────────────────────────────
+# 因子 1：離岸美元荒（代理：廣義美元指數動能）
+# ──────────────────────────────────────────────────────────────
+def build_xccy_proxy(fred_api_key: str) -> "dict | None":
+    """FRED 廣義美元指數 DTWEXBGS 的 20 日動能 → Z-Score。
+
+    代理邏輯：真 3M XCCY basis 無免費源；以「美元急速走強」近似離岸美元荒
+    （非美機構搶美元 → 美元指數噴升）。⚠️ 非真實 basis，UI 須標註代理。
+    """
+    df = fetch_fred("DTWEXBGS", fred_api_key, 800)
+    if df.empty or len(df) < _MIN_SAMPLES:
+        return None
+    s = df.set_index("date")["value"].astype(float)
+    mom = (s / s.shift(20) - 1.0) * 100.0          # 20 交易日動能（%）
+    mom = mom.dropna()
+    if mom.empty:
+        return None
+    z = rolling_zscore(mom)
+    sig, color, score = _sig_color_score(z, invert=False)   # 動能越高=越荒
+    v = round(float(mom.iloc[-1]), 2)
+    p = round(float(mom.iloc[-6]), 2) if len(mom) >= 6 else v
+    return dict(
+        name="離岸美元荒（代理：廣義美元指數動能）",
+        value=v, prev=p, unit="%(20D)", type="領先",
+        date=str(s.index[-1])[:10],
+        desc="⚠️代理指標（非真 XCCY basis）｜美元急升=非美機構搶美元=系統性美元荒前瞻",
+        zscore=None if z is None else round(z, 2),
+        signal=sig, color=color, score=score, weight=1,
+        series=_weekly_tail(mom),
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# 因子 2：套利平倉（JPY / CHF 短線升值幅度）
+# ──────────────────────────────────────────────────────────────
+def build_carry_unwind(fred_api_key: str) -> "dict | None":
+    """JPY/CHF 對美元 5 日升值幅度（取較極端者）→ Z-Score。
+
+    carry unwind 邏輯：避險貨幣（日圓/瑞郎）無預警急升 = 對沖基金被迫平倉
+    償還低息借貸 → 拋售風險資產。FRED DEXJPUS/DEXSZUS 為「每 1 美元兌多少
+    日圓/瑞郎」，**下跌 = 該貨幣升值**，故升值幅度 = -ROC。
+    """
+    appr_series = []     # 各貨幣「升值%」序列（正=升值）
+    latest = {}
+    for sid, label in (("DEXJPUS", "JPY"), ("DEXSZUS", "CHF")):
+        df = fetch_fred(sid, fred_api_key, 400)
+        if df.empty or len(df) < _MIN_SAMPLES:
+            continue
+        s = df.set_index("date")["value"].astype(float)
+        appr = -((s / s.shift(5) - 1.0) * 100.0)    # 5 日升值%（正=避險貨幣走強）
+        appr = appr.dropna()
+        if not appr.empty:
+            appr_series.append(appr.rename(label))
+            latest[label] = round(float(appr.iloc[-1]), 2)
+    if not appr_series:
+        return None
+    # 對齊後逐日取「較極端的升值」（避險壓力以最強的一方為準）
+    combined = pd.concat(appr_series, axis=1).max(axis=1).dropna()
+    if combined.empty:
+        return None
+    z = rolling_zscore(combined)
+    sig, color, score = _sig_color_score(z, invert=False)   # 升值越急=越警示
+    v = round(float(combined.iloc[-1]), 2)
+    p = round(float(combined.iloc[-6]), 2) if len(combined) >= 6 else v
+    _detail = "｜".join(f"{k}+{v_:.1f}%" if v_ >= 0 else f"{k}{v_:.1f}%"
+                        for k, v_ in latest.items())
+    return dict(
+        name="套利平倉壓力（JPY/CHF 急升）",
+        value=v, prev=p, unit="%(5D)", type="領先",
+        date=None, detail=_detail,
+        desc=f"避險貨幣急升=carry unwind 去槓桿（{_detail}）",
+        zscore=None if z is None else round(z, 2),
+        signal=sig, color=color, score=score, weight=1,
+        series=_weekly_tail(combined),
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# 因子 3：影子/數位流動性（SSR = BTC 市值 / 穩定幣市值）
+# ──────────────────────────────────────────────────────────────
+def build_ssr() -> "dict | None":
+    """SSR (Stablecoin Supply Ratio) = BTC 市值 / 穩定幣總市值。
+
+    BTC 市值 ≈ BTC 價格 × 近似流通量；穩定幣市值取自 DefiLlama。
+    SSR 低（Z-Score 低）= 鏈上法幣子彈多 = 潛在買盤強（risk-on 偏多訊號，
+    與其他三個 risk-off 因子方向相反 → invert=True）。
+    """
+    stable = fetch_defillama_stablecoin_mcap()
+    btc = fetch_yf_close("BTC-USD", "5y")
+    if stable.empty or btc.empty:
+        return None
+    btc_mcap = (btc * _BTC_SUPPLY_APPROX)
+    # 日對齊（兩者皆日頻；normalize 去時分秒）
+    df = pd.concat(
+        [btc_mcap.rename("btc"), stable.rename("stable")], axis=1
+    )
+    df.index = pd.to_datetime(df.index).normalize()
+    df = df[~df.index.duplicated(keep="last")].sort_index().ffill().dropna()
+    if len(df) < _MIN_SAMPLES:
+        return None
+    ssr = (df["btc"] / df["stable"]).replace([np.inf, -np.inf], np.nan).dropna()
+    if ssr.empty:
+        return None
+    z = rolling_zscore(ssr)
+    # SSR 低 = 子彈多 = 偏多（健康）→ invert：z 越低越「警示(過熱/子彈耗盡)」
+    sig, color, score = _sig_color_score(z, invert=False)
+    v = round(float(ssr.iloc[-1]), 2)
+    p = round(float(ssr.iloc[-6]), 2) if len(ssr) >= 6 else v
+    _stable_b = float(df["stable"].iloc[-1]) / 1e9
+    return dict(
+        name="SSR 穩定幣購買力（BTC市值/穩定幣市值）",
+        value=v, prev=p, unit="", type="領先",
+        date=str(df.index[-1])[:10],
+        detail=f"穩定幣總市值≈${_stable_b:,.0f}B",
+        desc="SSR 低(Z<0)=鏈上法幣子彈多=潛在買盤強；SSR 高=子彈耗盡",
+        zscore=None if z is None else round(z, 2),
+        signal=sig, color=color, score=score, weight=1,
+        series=_weekly_tail(ssr),
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# 因子 4：跨資產波動率背離（MOVE / VIX）
+# ──────────────────────────────────────────────────────────────
+def build_move_vix() -> "dict | None":
+    """MOVE（美債波動率）/ VIX（美股波動率）比值 → Z-Score。
+
+    比值異常飆高（Z>2）= 資金源頭（債市）已劇震、股市盲目樂觀，
+    預示股市隨後資金踩踏補跌。
+    """
+    s_move = fetch_yf_close("^MOVE", "5y")
+    s_vix = fetch_yf_close("^VIX", "5y")
+    if s_move.empty or s_vix.empty:
+        return None
+    df = pd.concat([s_move.rename("move"), s_vix.rename("vix")], axis=1)
+    df.index = pd.to_datetime(df.index).normalize()
+    df = df[~df.index.duplicated(keep="last")].sort_index().dropna()
+    if len(df) < _MIN_SAMPLES:
+        return None
+    ratio = (df["move"] / df["vix"]).replace([np.inf, -np.inf], np.nan).dropna()
+    if ratio.empty:
+        return None
+    z = rolling_zscore(ratio)
+    sig, color, score = _sig_color_score(z, invert=False)   # 比值越高=越危險
+    v = round(float(ratio.iloc[-1]), 2)
+    p = round(float(ratio.iloc[-6]), 2) if len(ratio) >= 6 else v
+    return dict(
+        name="MOVE/VIX 波動率背離",
+        value=v, prev=p, unit="", type="領先",
+        date=str(df.index[-1])[:10],
+        detail=f"MOVE={df['move'].iloc[-1]:.1f}｜VIX={df['vix'].iloc[-1]:.1f}",
+        desc="比值飆高(Z>2)=債市劇震+股市樂觀→股市補跌風險",
+        zscore=None if z is None else round(z, 2),
+        signal=sig, color=color, score=score, weight=1,
+        series=_weekly_tail(ratio),
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# 對外入口：一次取齊四因子（個別失敗不影響其他）
+# ──────────────────────────────────────────────────────────────
+def fetch_liquidity_factors(fred_api_key: str = "") -> dict:
+    """取齊四個深水區流動性因子，回傳 {KEY: indicator_dict}（抓不到的略過）。
+
+    KEY: XCCY_PROXY / CARRY_UNWIND / SSR / MOVE_VIX
+    個別因子以 try/except 隔離 — 單一來源失敗不拖垮整體（邊界防禦）。
+    """
+    out: dict = {}
+    _builders = {
+        "XCCY_PROXY":   lambda: build_xccy_proxy(fred_api_key),
+        "CARRY_UNWIND": lambda: build_carry_unwind(fred_api_key),
+        "SSR":          build_ssr,
+        "MOVE_VIX":     build_move_vix,
+    }
+    for key, fn in _builders.items():
+        try:
+            entry = fn()
+            if entry:
+                out[key] = entry
+        except Exception as e:
+            print(f"[liquidity_engine] {key} 建構失敗: {e}")
+    return out

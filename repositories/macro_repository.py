@@ -282,6 +282,48 @@ def fetch_yf_latest(tickers: tuple[str, ...]) -> dict[str, Optional[float]]:
 
 
 # ══════════════════════════════════════════════════════════════
+# DefiLlama 穩定幣總市值（影子/數位流動性因子用）— 免 API key，走 NAS proxy
+# ══════════════════════════════════════════════════════════════
+DEFILLAMA_STABLECOIN_URL = "https://stablecoins.llama.fi/stablecoincharts/all"
+
+
+@register_cache
+@_ttl_cache(ttl_sec=1800, maxsize=2)   # 穩定幣市值日頻，30min TTL 足夠
+def fetch_defillama_stablecoin_mcap() -> pd.Series:
+    """抓 DefiLlama 全市場穩定幣「總流通市值」歷史（USD，日頻）。
+
+    Returns
+    -------
+    pd.Series  index=DatetimeIndex, value=總流通市值(USD)。失敗回空 Series。
+    """
+    r = fetch_url(DEFILLAMA_STABLECOIN_URL, timeout=20)
+    if r is None:
+        return pd.Series(dtype=float, name="stablecoin_mcap")
+    try:
+        data = r.json()
+    except Exception as e:
+        print(f"[defillama] 穩定幣 JSON 解析失敗: {e}")
+        return pd.Series(dtype=float, name="stablecoin_mcap")
+    rows: dict = {}
+    for item in (data or []):
+        try:
+            ts = int(item["date"])
+            tc = item.get("totalCirculatingUSD") or item.get("totalCirculating") or {}
+            # totalCirculatingUSD 為 {peg類型: 金額} → 加總所有數值欄；或本身即數值
+            if isinstance(tc, dict):
+                val = float(sum(v for v in tc.values() if isinstance(v, (int, float))))
+            else:
+                val = float(tc)
+            if val > 0:
+                rows[pd.Timestamp(ts, unit="s").normalize()] = val
+        except (KeyError, ValueError, TypeError):
+            continue
+    if not rows:
+        return pd.Series(dtype=float, name="stablecoin_mcap")
+    return pd.Series(rows, name="stablecoin_mcap").sort_index()
+
+
+# ══════════════════════════════════════════════════════════════
 # ISM 製造業 PMI — 5 段備援共用函式（v1.1 兩端統一）
 #
 # 為什麼 5 段？
