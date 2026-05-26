@@ -141,3 +141,70 @@ def test_fetch_liquidity_factors_isolates_failure(monkeypatch) -> None:
     out = le.fetch_liquidity_factors("KEY")
     assert "SSR" not in out                       # 失敗的略過
     assert {"XCCY_PROXY", "CARRY_UNWIND", "MOVE_VIX"} <= set(out)   # 其餘正常
+
+
+# ── 融合層：compute_liquidity_score（B 案：SSR 不計入）─────────
+def _fac(z, name="f"):
+    return {"zscore": z, "name": name, "value": z, "signal": "🟡"}
+
+
+def test_score_weighted_sum() -> None:
+    # 預設權重 0.4/0.3/0.3：2*.4 + 1*.3 + 0*.3 = 1.1 → 警戒
+    out = le.compute_liquidity_score({
+        "XCCY_PROXY": _fac(2.0), "CARRY_UNWIND": _fac(1.0), "MOVE_VIX": _fac(0.0),
+    })
+    assert out is not None
+    assert abs(out["value"] - 1.1) < 1e-6
+    assert out["tier"] == "警戒"
+    assert abs(sum(b["contrib"] for b in out["breakdown"]) - out["value"]) < 1e-6
+
+
+def test_score_clips_extreme_z() -> None:
+    # z=10 應被 clip 到 3；單因子在線 → 權重正規化為 1 → 分數=3
+    out = le.compute_liquidity_score({"XCCY_PROXY": _fac(10.0)})
+    assert out["value"] == 3.0
+    assert out["breakdown"][0]["z"] == 3.0
+
+
+def test_score_ssr_excluded() -> None:
+    # SSR 極端值不得影響壓力分數（B 案）
+    base = le.compute_liquidity_score({
+        "XCCY_PROXY": _fac(1.0), "CARRY_UNWIND": _fac(1.0), "MOVE_VIX": _fac(1.0),
+    })
+    with_ssr = le.compute_liquidity_score({
+        "XCCY_PROXY": _fac(1.0), "CARRY_UNWIND": _fac(1.0), "MOVE_VIX": _fac(1.0),
+        "SSR": _fac(9.0, "ssr"),
+    })
+    assert base["value"] == with_ssr["value"]        # SSR 不進總分
+    assert with_ssr["ssr"] is not None               # 但有附掛對照
+    assert with_ssr["ssr"]["zscore"] == 9.0
+
+
+def test_score_missing_factor_renormalizes() -> None:
+    # 只剩兩因子：權重 0.4/0.3 重正規化 → 0.571/0.429；2*.571+0*.429≈1.143
+    out = le.compute_liquidity_score({
+        "XCCY_PROXY": _fac(2.0), "MOVE_VIX": _fac(0.0),
+    })
+    assert abs(sum(out["weights"].values()) - 1.0) < 1e-6
+    assert abs(out["value"] - 2.0 * (0.4 / 0.7)) < 1e-3
+
+
+def test_score_skips_none_zscore() -> None:
+    out = le.compute_liquidity_score({
+        "XCCY_PROXY": _fac(None), "CARRY_UNWIND": _fac(2.0), "MOVE_VIX": _fac(2.0),
+    })
+    assert set(out["weights"]) == {"CARRY_UNWIND", "MOVE_VIX"}   # None 被略過
+
+
+def test_score_all_missing_none() -> None:
+    assert le.compute_liquidity_score({}) is None
+    assert le.compute_liquidity_score({"SSR": _fac(1.0)}) is None   # 只有 SSR 不算
+
+
+def test_score_tiers() -> None:
+    # 單因子在線 → 分數=clip(z)，逐檔驗門檻
+    assert le.compute_liquidity_score({"XCCY_PROXY": _fac(2.5)})["tier"] == "流動性危機"
+    assert le.compute_liquidity_score({"XCCY_PROXY": _fac(1.5)})["tier"] == "警戒"
+    assert le.compute_liquidity_score({"XCCY_PROXY": _fac(0.7)})["tier"] == "正常偏緊"
+    assert le.compute_liquidity_score({"XCCY_PROXY": _fac(0.1)})["tier"] == "寬鬆充裕"
+    assert le.compute_liquidity_score({"XCCY_PROXY": _fac(-2.0)})["tier"] == "寬鬆充裕"

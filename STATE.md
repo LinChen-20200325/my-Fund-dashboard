@@ -246,6 +246,18 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.225 — 流動性預警引擎：因子融合層（壓力綜合分數，SSR 獨立）（2026-05-26）
+
+- [x] **拍板**（user 選 B 案）：SSR 抽出當獨立「鏈上子彈水位」對沖指標，**不計入**壓力分數；壓力分數僅由三個 risk-off 因子（XCCY/Carry/MOVE-VIX）組成
+- [x] **新 `services/liquidity_engine.py:compute_liquidity_score(factors, weights=None)`**：
+  - 三因子 Z 各 `clip(±3)` → 加權平均；`DEFAULT_WEIGHTS` 0.4/0.3/0.3（可調、不寫死）
+  - **缺因子自動重正規化權重**（邊界防禦）；三因子全缺 → None
+  - `_tier` 四檔分級：🟢寬鬆充裕(<0.5)／🟡正常偏緊(0.5-1)／🟠警戒(1-2)／🔴流動性危機(≥2)
+  - 輸出含 value/tier/signal/color/desc/**breakdown(逐因子貢獻拆解)**/weights/**ssr(獨立附掛對照)**
+- [x] **驗證** ruff 全綠；新增 7 測試（加權和/clip/SSR不計入/缺因子重正規化/None略過/全缺/四檔門檻）；`test_liquidity_engine.py` **21 passed**；`pytest -m "not slow"` **632 passed**/1 skipped 零回歸
+- [ ] **下一階段**（未做）：UI 接線（Tab1 顯示壓力分數卡 + 子彈水位 + breakdown）、合成分數歷史序列趨勢圖、當前宏觀研判
+- [ ] **校準待辦**：權重與分級門檻待 proxy 環境跑真值後微調（目前為合理預設）
+
 ### v18.224 — 全球宏觀流動性預警引擎：數據獲取層（四深水區因子）（2026-05-26）
 
 - [x] **需求**（user 角色設定）：構建 Global Macro Liquidity Warning Engine，四因子 XCCY/Carry/SSR/MOVE-VIX；本輪先做「數據獲取層」

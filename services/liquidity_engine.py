@@ -33,6 +33,12 @@ WINDOW = 252                     # 滾動標準化視窗（交易日）
 _MIN_SAMPLES = 60                # 樣本少於此不計算 Z-Score（邊界防禦）
 _BTC_SUPPLY_APPROX = 19_800_000  # BTC 流通量近似（~固定）→ 市值 ≈ 價格 × 供給
 
+# 流動性「壓力分數」只由三個 risk-off 因子組成（同向：Z 越高=壓力越大）。
+# SSR 依設計為獨立「鏈上子彈水位」對沖指標，不計入壓力分數（見 compute_liquidity_score）。
+STRESS_FACTORS: tuple = ("XCCY_PROXY", "CARRY_UNWIND", "MOVE_VIX")
+DEFAULT_WEIGHTS: dict = {"XCCY_PROXY": 0.4, "CARRY_UNWIND": 0.3, "MOVE_VIX": 0.3}
+_CLIP = 3.0                       # 單因子 Z 截斷區間 ±3（去極端值干擾）
+
 
 def rolling_zscore(series: pd.Series, window: int = WINDOW) -> "float | None":
     """最後一點相對滾動視窗的 Z-Score；樣本不足 / 標準差為零 → None。"""
@@ -258,3 +264,71 @@ def fetch_liquidity_factors(fred_api_key: str = "") -> dict:
         except Exception as e:
             print(f"[liquidity_engine] {key} 建構失敗: {e}")
     return out
+
+
+# ──────────────────────────────────────────────────────────────
+# 因子融合：流動性壓力綜合分數（SSR 為獨立子彈水位，不計入）
+# ──────────────────────────────────────────────────────────────
+def _tier(score: float) -> tuple:
+    """壓力分數 → (分級, signal, color, 研判文字)。"""
+    if score >= 2.0:
+        return "流動性危機", "🔴", "#f44336", "美元荒/避險平倉/波動率背離同時引爆，risk-off 去槓桿"
+    if score >= 1.0:
+        return "警戒", "🟠", "#ff6d00", "壓力升溫，留意資金面轉向與槓桿回收"
+    if score >= 0.5:
+        return "正常偏緊", "🟡", "#ffc107", "壓力溫和，中性偏謹慎"
+    return "寬鬆充裕", "🟢", "#00c853", "流動性壓力低，risk-on 友善"
+
+
+def compute_liquidity_score(factors: dict, weights: "dict | None" = None) -> "dict | None":
+    """三個 risk-off 壓力因子加權合成「流動性壓力分數」。
+
+    設計（user 拍板 B 案）：SSR **不計入**壓力分數，改作獨立「鏈上子彈水位」
+    對沖指標附掛於輸出，供研判層對照（SSR 低=子彈多=偏多，方向與壓力相反）。
+
+    流程：各因子 Z 先 `clip(±3)` → 依權重加權平均（缺因子自動重正規化權重，
+    邊界防禦）→ 切四檔分級。三因子全缺 → None。
+
+    Parameters
+    ----------
+    factors : dict   fetch_liquidity_factors 的輸出 {KEY: indicator_dict}
+    weights : dict   可調權重（預設 DEFAULT_WEIGHTS）；只對在線因子正規化
+
+    Returns
+    -------
+    dict  含 value(總分)/tier/signal/color/desc/breakdown(逐因子貢獻)/
+          weights(正規化後)/ssr(獨立對照)；無壓力因子在線 → None。
+    """
+    w = dict(weights or DEFAULT_WEIGHTS)
+    present = {k: factors[k] for k in STRESS_FACTORS
+               if factors.get(k) and factors[k].get("zscore") is not None}
+    if not present:
+        return None
+    wsum = sum(w.get(k, 0.0) for k in present) or 1.0   # 邊界：缺因子重正規化
+    score = 0.0
+    breakdown = []
+    norm_w = {}
+    for k, e in present.items():
+        z = max(-_CLIP, min(_CLIP, float(e["zscore"])))   # clip(±3)
+        wn = w.get(k, 0.0) / wsum
+        contrib = z * wn
+        score += contrib
+        norm_w[k] = round(wn, 3)
+        breakdown.append(dict(key=k, name=e.get("name", k), z=round(z, 2),
+                              weight=round(wn, 3), contrib=round(contrib, 3)))
+    score = round(score, 3)
+    tier, sig, color, note = _tier(score)
+
+    ssr_e = factors.get("SSR")
+    ssr_info = None
+    if ssr_e:
+        ssr_info = dict(name=ssr_e.get("name"), value=ssr_e.get("value"),
+                        zscore=ssr_e.get("zscore"), signal=ssr_e.get("signal"))
+
+    return dict(
+        name="流動性壓力綜合分數",
+        value=score, unit="加權Z", type="綜合",
+        tier=tier, signal=sig, color=color,
+        desc=f"{tier}：{note}（{len(present)}/{len(STRESS_FACTORS)} 壓力因子在線）",
+        breakdown=breakdown, weights=norm_w, ssr=ssr_info,
+    )
