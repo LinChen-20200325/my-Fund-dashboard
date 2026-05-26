@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.223 — 修：總經載入無聲失敗（proxy 逾時不降級直連 + Tab1 無錯誤處理）（2026-05-26）
+
+- [x] **症狀**（user）：總經按「載入」顯示「正在下載」後**突然消失、沒資料、沒錯誤**
+- [x] **根因**（親查）：①macro 全部 fetch 走 `proxy_helper.fetch_url`（含 FRED/Yahoo，刻意走 NAS 取台灣 IP）②`infra/proxy.fetch_url` 的**降級直連只在 ProxyError／403×2 觸發，純逾時不觸發** → NAS proxy「在但慢」時每個 endpoint 逾時回 None、不試直連 → ~30 端點序列硬拖 → Streamlit reset（spinner 消失）③Tab1 載入區**無 try/except** → 失敗無聲
+- [x] **修法**：①`infra/proxy.fetch_url` 加 `_tmo` 計數，`_proxy and (_perr>0 or _block>=2 or _tmo>0)` → **逾時也降級直連**（FRED/Yahoo 可直連救回）②`ui/tab1_macro.py` 載入包 try/except + 空結果偵測 → 失敗顯示明確原因 + 提示測 Proxy，不再無聲消失、不設 macro_done 讓可重試
+- [x] **驗證** AST OK；mock 親驗「proxy 逾時→降級直連成功」；ruff proxy 2=2 / tab1 51=51 零新增；`pytest -m "not slow"` **611 passed**/1 skipped 零回歸
+- [x] **邊界**：直連 fallback 對台灣站（基金來源）仍會被擋（多一次 bounded 嘗試），但對 FRED/Yahoo（美國）直接救回；fund 來源主要靠 v18.221 預快取
+
 ### v18.222 — NAV 預快取 Sheet 自動同步修復（CI 缺套件 + sys.path 靜默失效）（2026-05-25）
 
 - [x] **承 v18.221**（user 選「1：驗證 + 自動化 NAV 預快取」）

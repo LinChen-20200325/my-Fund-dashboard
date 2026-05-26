@@ -145,6 +145,7 @@ def fetch_url(
     sess   = make_retry_session()
     _perr  = 0
     _block = 0
+    _tmo   = 0   # v18.223：累計 proxy 逾時次數 → 逾時也要降級直連
 
     for attempt in range(retries):
         try:
@@ -166,13 +167,16 @@ def fetch_url(
             print(f"[proxy] ProxyError attempt {attempt+1}: {e}")
             _t.sleep(2)
         except requests.exceptions.Timeout:
+            _tmo += 1
             print(f"[proxy] Timeout attempt {attempt+1}: {url[:60]}")
             _t.sleep(2)
         except Exception as e:
             print(f"[proxy] Error: {e}")
             break
 
-    if _proxy and (_perr > 0 or _block >= 2):
+    # v18.223：proxy 逾時（_tmo）同樣降級直連 — 原本只有 ProxyError/403 會降級，
+    # 導致「proxy 在但很慢」時每個 endpoint 逾時後直接回 None（FRED/Yahoo 本可直連救回）。
+    if _proxy and (_perr > 0 or _block >= 2 or _tmo > 0):
         print(f"[proxy] 降級直連：{url[:80]}")
         try:
             r_dc = sess.get(url, headers=_hdr, params=params,

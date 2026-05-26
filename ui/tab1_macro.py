@@ -146,35 +146,51 @@ def render_macro_tab() -> None:
         if st.button(_btn_label, type="primary", key="btn_macro_load"):
             with st.spinner("📡 從 FRED / Yahoo Finance 抓取最新指標..."):
                 _t0_macro = _time_mod.time()
-                ind   = fetch_all_indicators(FRED_KEY)
+                # v18.223：包 try/except + 空結果偵測 — 原本無錯誤處理，抓取失敗會
+                # 無聲消失（spinner 沒了、沒資料、沒錯誤）。改成失敗顯示明確原因。
+                try:
+                    ind = fetch_all_indicators(FRED_KEY)
+                except Exception as _me:
+                    ind = {}
+                    _friendly_error(
+                        "總經指標載入失敗", _me,
+                        hint="多半是 NAS proxy 連線異常或來源暫時無回應；"
+                             "可按側欄「🔍 測試 Proxy 連線」確認，或稍後重試。",
+                        level="error")
                 _macro_ms = round((_time_mod.time() - _t0_macro) * 1000)
-                phase = calc_macro_phase(ind)
-                old_phase = (st.session_state.phase_info.get("phase","")
-                             if st.session_state.phase_info else "")
-                new_phase = phase.get("phase","")
-                if old_phase and old_phase != new_phase:
-                    st.session_state.phase_history.append(
-                        {"from":old_phase,"to":new_phase,
-                         "date":datetime.date.today().isoformat(),
-                         "score":phase.get("score",0)})
-                st.session_state.indicators        = ind
-                st.session_state.prev_phase        = old_phase
-                st.session_state.phase_info        = phase
-                st.session_state.macro_done        = True
-                st.session_state.macro_last_update = _now_tw()
-                if ind and "FED_RATE" in ind:
-                    set_risk_free_rate(ind["FED_RATE"].get("value",4.0) / 100)
-                _update_data_registry()
-                # ── 記錄 API 延遲（供 Tab5 延遲趨勢圖）──
-                _lat_log = st.session_state.get("api_latency_log", [])
-                _lat_log.append({
-                    "label":    _now_tw().strftime("%H:%M"),
-                    "macro_ms": _macro_ms,
-                    "moneydj_ms": None,
-                    "yf_ms":      None,
-                })
-                st.session_state["api_latency_log"] = _lat_log[-24:]
-                st.success(f"✅ 已抓取 {len(ind)} 個指標！（{_now_tw().strftime('%H:%M')} TW｜{_macro_ms}ms）")
+                if not ind:
+                    st.error(
+                        f"❌ 沒有抓到任何總經指標（0 個，耗時 {_macro_ms}ms）。"
+                        "多半是 NAS proxy 不通／逾時或來源被擋——"
+                        "請按側欄「🔍 測試 Proxy 連線」確認後再重試。")
+                else:
+                    phase = calc_macro_phase(ind)
+                    old_phase = (st.session_state.phase_info.get("phase","")
+                                 if st.session_state.phase_info else "")
+                    new_phase = phase.get("phase","")
+                    if old_phase and old_phase != new_phase:
+                        st.session_state.phase_history.append(
+                            {"from":old_phase,"to":new_phase,
+                             "date":datetime.date.today().isoformat(),
+                             "score":phase.get("score",0)})
+                    st.session_state.indicators        = ind
+                    st.session_state.prev_phase        = old_phase
+                    st.session_state.phase_info        = phase
+                    st.session_state.macro_done        = True
+                    st.session_state.macro_last_update = _now_tw()
+                    if "FED_RATE" in ind:
+                        set_risk_free_rate(ind["FED_RATE"].get("value",4.0) / 100)
+                    _update_data_registry()
+                    # ── 記錄 API 延遲（供 Tab5 延遲趨勢圖）──
+                    _lat_log = st.session_state.get("api_latency_log", [])
+                    _lat_log.append({
+                        "label":    _now_tw().strftime("%H:%M"),
+                        "macro_ms": _macro_ms,
+                        "moneydj_ms": None,
+                        "yf_ms":      None,
+                    })
+                    st.session_state["api_latency_log"] = _lat_log[-24:]
+                    st.success(f"✅ 已抓取 {len(ind)} 個指標！（{_now_tw().strftime('%H:%M')} TW｜{_macro_ms}ms）")
             with st.spinner("📰 抓取市場新聞 + 系統性風險掃描..."):
                 try:
                     _news = fetch_market_news(max_per_feed=5)
