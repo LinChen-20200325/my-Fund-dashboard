@@ -436,8 +436,9 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 **核心** `services/ai_service.py`：
 - `get_gemini_keys() -> list[str]`：從環境變數收齊所有 key，去重保序。來源 = `GEMINI_API_KEY`（主）＋ `GEMINI_API_KEYS`（逗號/分號分隔）＋ `GEMINI_API_KEY_1..10`（編號）。
-- `gemini_generate(prompt, max_tokens, keys, start)`：從 `start` 起 round-robin 試 key；撞 429（配額）就立刻換下一把（`retry=0` 不空等），全部撞配額才回 429 訊息；非配額錯誤（HTTP 5xx／逾時）不換 key 直接回傳；**單把 key 時退化成原 `_gemini`**（保留預設 retry 容錯）。
+- `gemini_generate(prompt, max_tokens, keys, start)`：從 `start` 起 round-robin 試 key；撞 429（配額）就立刻換下一把（`retry=0` 不空等），全部撞配額才回 429 訊息；撞 **5xx 忙線／逾時**（換 key 無助於修復）改在**原 key 指數退避重試**（`retry=2`，5s→10s），仍忙線回友善 503 訊息而非原始 JSON（v18.228 修；舊行為是「不換 key 直接噴原始錯誤」）；其他錯誤直接回；**單把 key 時退化成原 `_gemini`**（保留預設 retry 容錯）。
 - `_is_quota_error(text)`：以 `"429"` / `"配額已達上限"` 判定。
+- `_is_transient_error(text)`（v18.228）：以 `HTTP 500/502/503/504` / `逾時` / `忙線` 判定 → 觸發原 key 退避重試。`_gemini` 5xx 分支同步改 `5s,10s` 退避，503 耗盡後回友善訊息（單 key 路徑亦受惠）。
 
 **接線** `ui/helpers/ai_summary.py`（三 Tab 共用 widget）：傳入 key 優先、其餘從池補上；用跨 Tab 的 `st.session_state["_gemini_key_cursor"]` 當 round-robin 起點（即使沒撞 429 也輪流，平均分散負載）；footer caption 顯示「N 把 key 輪替」。
 
@@ -452,7 +453,7 @@ GEMINI_API_KEY_2 = "帳號3key"
 ```
 `app.py:_load_keys` 會把上述全部從 secrets 鏡像到 env 供 `get_gemini_keys` 讀。
 
-**驗證**：`test_ai_service.py` 9 passed（解析/去重/輪替/全429/offset/單key/空池）；`pytest -m "not slow"` 611 passed/1 skipped；ruff 零新增；向後相容（單 key 行為不變）。
+**驗證**：`test_ai_service.py` 11 passed（解析/去重/輪替/全429/offset/單key/空池＋v18.228：5xx 同 key 退避 `[(A,0),(A,2)]`／其他錯誤不換 key／`_is_transient_error` 偵測）；`pytest -m "not slow"` 640 passed/1 skipped；ruff 零新增；向後相容（單 key 行為不變）。
 
 ---
 
