@@ -246,6 +246,13 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.229 — 修：流動性引擎拖垮總經主載入（卡 RUNNING…）→ 改按鈕觸發（2026-05-27）
+
+- [x] **症狀**（user 截圖）：總經卡片全卡「待取得／載入中」、app 停在「RUNNING…」、像抓不到資料
+- [x] **根因**（親查 `ui/tab1_macro.py`）：v18.226 把 `fetch_liquidity_factors` **同步塞進總經載入分支**（btn_macro_load）；該函式跑 3×yfinance 5y + DefiLlama + 3×FRED 序列，雖各有 timeout（15/20s）但**序列疊加最壞 ~125s 阻塞**，Streamlit 整段 script 跑完才重繪 → 使用者乾瞪「RUNNING…」＋舊 placeholder
+- [x] **修法**（低風險、零 re-indent）：①移除載入分支 184-196 的同步抓取 → 總經載入恢復快速；②流動性引擎改**按鈕觸發**：未載入時顯示「🌊 載入流動性壓力預警引擎」CTA、面板內加「🔄 重新抓取」，皆走 nested `_load_liquidity_factors()`（spinner + try/except + `st.rerun()`）；既有 expander 渲染區塊**逐字不動**
+- [x] **驗證** AST OK；ruff `tab1_macro` 51=51 零新增；`pytest -m "not slow"` **640 passed**/1 skipped；`test_app_smoke + apptest` **110 passed**（含 expander 巢狀檢查 + 完整模組執行）零回歸
+
 ### v18.228 — 修：AI 白話總體檢撞 Gemini 503 直接噴原始錯誤（多 key 路徑零重試）（2026-05-27）
 
 - [x] **症狀**（user 截圖）：「🤖 AI 白話總體檢」按重新生成 → `❌ HTTP 503：{...high demand...}` 原始 JSON，6 把 key 也救不回
