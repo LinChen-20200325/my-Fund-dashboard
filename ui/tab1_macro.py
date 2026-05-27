@@ -181,6 +181,19 @@ def render_macro_tab() -> None:
                     if "FED_RATE" in ind:
                         set_risk_free_rate(ind["FED_RATE"].get("value",4.0) / 100)
                     _update_data_registry()
+                    # ── v18.226 流動性壓力預警引擎（獨立 try，抓不到不拖垮總經）──
+                    try:
+                        from services.liquidity_engine import (
+                            compute_liquidity_score,
+                            fetch_liquidity_factors,
+                        )
+                        _liq_facs = fetch_liquidity_factors(FRED_KEY)
+                        st.session_state.liquidity_factors = _liq_facs
+                        st.session_state.liquidity_score = compute_liquidity_score(_liq_facs)
+                    except Exception as _le:
+                        st.session_state.liquidity_factors = {}
+                        st.session_state.liquidity_score = None
+                        print(f"[tab1/liquidity] 流動性因子載入失敗: {_le}")
                     # ── 記錄 API 延遲（供 Tab5 延遲趨勢圖）──
                     _lat_log = st.session_state.get("api_latency_log", [])
                     _lat_log.append({
@@ -1260,6 +1273,96 @@ def render_macro_tab() -> None:
                             "ℹ️ **指標同步狀態**：" + " ｜ ".join(_diag_parts)
                             + "　暫不影響整體健康度評估，主源補齊 ≥20 筆後本卡會自動計算複合 Risk Score。"
                         )
+
+            # ── 🌊 流動性壓力預警引擎（v18.226：深水區 4 因子）──────
+            _liq_score = st.session_state.get("liquidity_score")
+            _liq_facs  = st.session_state.get("liquidity_factors") or {}
+            if _liq_score and _show_l3:
+                with st.expander("🌊 流動性壓力預警引擎（深水區 4 因子）", expanded=False):
+                    from ui.components.macro_card import make_sparkline as _mk_sl2
+                    st.caption("⚠️ 進階觀察｜XCCY 為代理指標、權重未經真值校準，僅供方向性參考")
+
+                    # ── 壓力分數 + 分級 + 逐因子貢獻 ──────────────────
+                    _cs_l, _cs_r = st.columns([1, 2])
+                    with _cs_l:
+                        st.metric("流動性壓力分數", f"{_liq_score['value']:+.2f}",
+                                  _liq_score["tier"])
+                        st.markdown(
+                            f"<div style='font-size:1.3rem'>{_liq_score['signal']} "
+                            f"<b style='color:{_liq_score['color']}'>"
+                            f"{_liq_score['tier']}</b></div>",
+                            unsafe_allow_html=True)
+                    with _cs_r:
+                        st.markdown(f"**研判**　{_liq_score['desc']}")
+                        _bd = _liq_score.get("breakdown") or []
+                        if _bd:
+                            _bfig = go.Figure(go.Bar(
+                                x=[b["name"][:10] for b in _bd],
+                                y=[b["contrib"] for b in _bd],
+                                marker_color=["#f44336" if b["contrib"] > 0
+                                              else "#00c853" for b in _bd],
+                                hovertemplate="%{x}: 貢獻 %{y:+.3f}<extra></extra>"))
+                            _bfig.add_hline(y=0, line_color="#555", line_width=1)
+                            _bfig.update_layout(
+                                height=170, margin=dict(t=4, b=40, l=4, r=4),
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)", showlegend=False,
+                                xaxis=dict(showgrid=False, tickangle=-30,
+                                           tickfont=dict(size=9), fixedrange=True),
+                                yaxis=dict(showgrid=False, zeroline=False,
+                                           fixedrange=True))
+                            st.plotly_chart(_bfig, use_container_width=True,
+                                            config={"displayModeBar": False})
+                    st.divider()
+
+                    # ── 三個 risk-off 壓力因子卡 ─────────────────────
+                    _fcols = st.columns(3)
+                    for _col, _fk in zip(
+                            _fcols, ("XCCY_PROXY", "CARRY_UNWIND", "MOVE_VIX")):
+                        _fe = _liq_facs.get(_fk)
+                        with _col:
+                            if not _fe:
+                                st.caption(f"（{_fk} 無資料）")
+                                continue
+                            _fz = _fe.get("zscore")
+                            st.markdown(f"**{_fe['signal']} {_fe['name']}**")
+                            st.markdown(
+                                f"值 `{_fe['value']}{_fe.get('unit', '')}`　"
+                                f"Z `{'—' if _fz is None else f'{_fz:+.2f}'}`")
+                            _fs = _safe_series(_fe.get("series"))
+                            _fsl = (_mk_sl2(_fs, high_is_bad=True, lookback=60,
+                                            height=110)
+                                    if _fs is not None else None)
+                            if _fsl is not None:
+                                st.plotly_chart(_fsl, use_container_width=True,
+                                                config={"displayModeBar": False})
+                            st.caption(_fe.get("desc", ""))
+                    st.divider()
+
+                    # ── SSR 鏈上子彈水位（獨立，不計入壓力分數）──────
+                    _ssr = _liq_facs.get("SSR")
+                    if _ssr:
+                        _ssr_l, _ssr_r = st.columns([1.5, 1])
+                        with _ssr_l:
+                            st.markdown(f"**🔫 {_ssr['name']}**")
+                            _ssr_s = _safe_series(_ssr.get("series"))
+                            _ssr_fig = (_mk_sl2(_ssr_s, high_is_bad=False,
+                                                lookback=60, height=140)
+                                        if _ssr_s is not None else None)
+                            if _ssr_fig is not None:
+                                st.plotly_chart(_ssr_fig, use_container_width=True,
+                                                config={"displayModeBar": False})
+                            else:
+                                st.caption("📡 資料載入中或筆數不足…")
+                        with _ssr_r:
+                            _sz = _ssr.get("zscore")
+                            st.markdown(
+                                "**怎麼看？**　SSR = BTC市值 ÷ 穩定幣市值，"
+                                "**獨立於壓力分數**（不計入）。\n\n"
+                                f"**目前讀數**　{_ssr['signal']} SSR "
+                                f"`{_ssr['value']}`，Z "
+                                f"`{'—' if _sz is None else f'{_sz:+.2f}'}`\n\n"
+                                "SSR 低(Z<0)=鏈上法幣子彈多=潛在買盤強；高=子彈耗盡")
 
             # ── 景氣循環羅盤（V5：薩姆 + RSP/SPY 廣度 + 基準利率）──────
             _sahm_s  = _safe_series(_sahm_d.get("series"))  if _sahm_d  else None

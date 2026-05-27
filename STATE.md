@@ -246,6 +246,14 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.226 — 流動性預警引擎：UI 接線（Tab1 戰情首頁壓力卡）（2026-05-26）
+
+- [x] **資料載入**：`ui/tab1_macro.py:render_macro_tab` 抓取成功分支加獨立 `try/except`，呼叫 `fetch_liquidity_factors`+`compute_liquidity_score` → 存 `session_state.liquidity_factors / liquidity_score`（失敗不拖垮總經載入）
+- [x] **新區塊**：「🌡️ 宏觀風險溫度計」後新增 `st.expander("🌊 流動性壓力預警引擎", expanded=False)`（收合，進階觀察）：壓力分數 metric + 分級燈號、逐因子貢獻 breakdown 長條、三 risk-off 因子卡（值/Z/sparkline）、**SSR 獨立「子彈水位」卡**、⚠️代理指標標註
+- [x] **驗證** AST OK；ruff `tab1_macro` 51=51 零新增；無巢狀 expander（複用 12 空格 `if` 層 sibling）；`test_app_smoke + apptest` **110 passed**（含 expander 巢狀檢查 + 完整模組執行）；`pytest -m "not slow"` **632 passed**/1 skipped 零回歸
+- [ ] **下一階段**（未做）：合成分數歷史序列趨勢圖、當前宏觀研判
+- [ ] **真值待驗**：UI 數值需 proxy 環境跑 `fetch_liquidity_factors(FRED_KEY)` 確認四 key 回得來；權重/門檻待真值校準
+
 ### v18.225 — 流動性預警引擎：因子融合層（壓力綜合分數，SSR 獨立）（2026-05-26）
 
 - [x] **拍板**（user 選 B 案）：SSR 抽出當獨立「鏈上子彈水位」對沖指標，**不計入**壓力分數；壓力分數僅由三個 risk-off 因子（XCCY/Carry/MOVE-VIX）組成
