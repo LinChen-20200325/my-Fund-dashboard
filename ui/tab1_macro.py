@@ -181,19 +181,9 @@ def render_macro_tab() -> None:
                     if "FED_RATE" in ind:
                         set_risk_free_rate(ind["FED_RATE"].get("value",4.0) / 100)
                     _update_data_registry()
-                    # ── v18.226 流動性壓力預警引擎（獨立 try，抓不到不拖垮總經）──
-                    try:
-                        from services.liquidity_engine import (
-                            compute_liquidity_score,
-                            fetch_liquidity_factors,
-                        )
-                        _liq_facs = fetch_liquidity_factors(FRED_KEY)
-                        st.session_state.liquidity_factors = _liq_facs
-                        st.session_state.liquidity_score = compute_liquidity_score(_liq_facs)
-                    except Exception as _le:
-                        st.session_state.liquidity_factors = {}
-                        st.session_state.liquidity_score = None
-                        print(f"[tab1/liquidity] 流動性因子載入失敗: {_le}")
+                    # v18.228：流動性引擎改按鈕觸發（見下方 expander），不再塞進
+                    # 總經主載入路徑 — 3×yfinance 5y + DefiLlama + 3×FRED 序列抓取
+                    # 最壞會疊上 ~2 分鐘阻塞，害總經卡在「RUNNING…」。
                     # ── 記錄 API 延遲（供 Tab5 延遲趨勢圖）──
                     _lat_log = st.session_state.get("api_latency_log", [])
                     _lat_log.append({
@@ -1274,13 +1264,35 @@ def render_macro_tab() -> None:
                             + "　暫不影響整體健康度評估，主源補齊 ≥20 筆後本卡會自動計算複合 Risk Score。"
                         )
 
-            # ── 🌊 流動性壓力預警引擎（v18.226：深水區 4 因子）──────
+            # ── 🌊 流動性壓力預警引擎（v18.228：按鈕觸發，不塞總經主載入路徑）──
+            def _load_liquidity_factors() -> None:
+                with st.spinner("抓取 FRED / DefiLlama / Yahoo 流動性因子（約 10–30 秒）..."):
+                    try:
+                        from services.liquidity_engine import (
+                            compute_liquidity_score, fetch_liquidity_factors)
+                        _f = fetch_liquidity_factors(FRED_KEY)
+                        st.session_state.liquidity_factors = _f
+                        st.session_state.liquidity_score = compute_liquidity_score(_f)
+                    except Exception as _le:
+                        st.session_state.liquidity_factors = {}
+                        st.session_state.liquidity_score = None
+                        st.error(f"流動性因子載入失敗：{_le}")
+
             _liq_score = st.session_state.get("liquidity_score")
             _liq_facs  = st.session_state.get("liquidity_factors") or {}
+            if _show_l3 and not _liq_score:
+                st.caption("🌊 **流動性壓力預警引擎**（深水區 4 因子）為進階觀察，"
+                           "獨立抓取以免拖慢總經主載入。")
+                if st.button("🌊 載入流動性壓力預警引擎", key="btn_load_liquidity"):
+                    _load_liquidity_factors()
+                    st.rerun()
             if _liq_score and _show_l3:
                 with st.expander("🌊 流動性壓力預警引擎（深水區 4 因子）", expanded=False):
                     from ui.components.macro_card import make_sparkline as _mk_sl2
                     from services.liquidity_engine import liquidity_verdict
+                    if st.button("🔄 重新抓取流動性因子", key="btn_reload_liquidity"):
+                        _load_liquidity_factors()
+                        st.rerun()
                     st.caption("⚠️ 進階觀察｜XCCY 為代理指標、權重未經真值校準，僅供方向性參考")
                     st.info(liquidity_verdict(_liq_score, _liq_facs))
 

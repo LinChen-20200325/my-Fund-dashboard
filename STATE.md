@@ -246,6 +246,20 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.229 — 修：流動性引擎拖垮總經主載入（卡 RUNNING…）→ 改按鈕觸發（2026-05-27）
+
+- [x] **症狀**（user 截圖）：總經卡片全卡「待取得／載入中」、app 停在「RUNNING…」、像抓不到資料
+- [x] **根因**（親查 `ui/tab1_macro.py`）：v18.226 把 `fetch_liquidity_factors` **同步塞進總經載入分支**（btn_macro_load）；該函式跑 3×yfinance 5y + DefiLlama + 3×FRED 序列，雖各有 timeout（15/20s）但**序列疊加最壞 ~125s 阻塞**，Streamlit 整段 script 跑完才重繪 → 使用者乾瞪「RUNNING…」＋舊 placeholder
+- [x] **修法**（低風險、零 re-indent）：①移除載入分支 184-196 的同步抓取 → 總經載入恢復快速；②流動性引擎改**按鈕觸發**：未載入時顯示「🌊 載入流動性壓力預警引擎」CTA、面板內加「🔄 重新抓取」，皆走 nested `_load_liquidity_factors()`（spinner + try/except + `st.rerun()`）；既有 expander 渲染區塊**逐字不動**
+- [x] **驗證** AST OK；ruff `tab1_macro` 51=51 零新增；`pytest -m "not slow"` **640 passed**/1 skipped；`test_app_smoke + apptest` **110 passed**（含 expander 巢狀檢查 + 完整模組執行）零回歸
+
+### v18.228 — 修：AI 白話總體檢撞 Gemini 503 直接噴原始錯誤（多 key 路徑零重試）（2026-05-27）
+
+- [x] **症狀**（user 截圖）：「🤖 AI 白話總體檢」按重新生成 → `❌ HTTP 503：{...high demand...}` 原始 JSON，6 把 key 也救不回
+- [x] **根因**（親查 `services/ai_service.py`）：`gemini_generate` 多 key 路徑對每把 key 用 `_gemini(retry=0)`，且迴圈 `if not _is_quota_error: return res` → **非 429 的 503 第一把就 instant return**；503 是模型級忙線（換 key 無助），但程式連退避重試都沒做就噴原始 JSON
+- [x] **修法**（surgical，三處）：①`_gemini` 5xx 分支改 `5s,10s` 指數退避＋503 回友善訊息（單 key 路徑同步受惠）②加 `_is_transient_error`（5xx/逾時/忙線偵測）③`gemini_generate` 多 key 迴圈：429→換 key、**5xx/逾時→原 key 退避重試 `retry=2`**、其他錯誤→直接回
+- [x] **驗證** AST OK；ruff `ai_service` 10=10 零新增；`test_ai_service.py` 改 1 測（500/503 改判 transient→同 key 退避 `[(A,0),(A,2)]`）＋新增 2 測（其他錯誤不換 key／`_is_transient_error` 偵測）＝ **11 passed**
+
 ### v18.227 — 流動性預警引擎：合成歷史趨勢 + 宏觀研判（2026-05-26）
 
 - [x] **歷史序列**：`liquidity_engine.py` 加 `rolling_zscore_series`（整條滾動 z，末點與 `rolling_zscore` 一致）；四因子建構多存 `z_series`；`compute_liquidity_score` 對齊三因子 z_series→clip→加權加總出 `score_series`（合成分數歷史，末點≈當下純量）
