@@ -246,6 +246,13 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.231 — 修：「♻️ 強制同步 GitHub」按鈕只 `st.rerun()` → 改成比對 local/remote commit 並給 Cloud Reboot 連結（2026-05-28）
+
+- [x] **症狀**（user 截圖）：v18.230 已 merge 進 main、Cloud app 仍顯示舊版（C 頁無「分配模式」selectbox）；按側欄「♻️ 強制同步 GitHub 最新邏輯」沒效
+- [x] **根因**（`app.py:260`）：原碼只有 `if button: st.rerun()` — **沒做任何 git 操作**，按了只是重跑同一個容器的 Python script，沒拉新版
+- [x] **修法**：按鈕內加 `git rev-parse HEAD`（local）vs `git ls-remote origin main`（remote）比對 → 同步顯示「✅ 已最新」；不同步顯示版本對照 + **「→ Streamlit Cloud Reboot」link_button** 帶 user 去 share.streamlit.io 重啟容器（Cloud 容器無法本地 git pull —— pull 也不會 reload Python module）；本機環境提示 `Ctrl+C` 後 `streamlit run app.py`
+- [x] **驗證** AST OK；ruff `app.py` 零新增（既有 112 errors 不變）；`pytest -m "not slow"` 通過
+
 ### v18.230 — 新：A/B/C 試算支援「目標單位數」模式（新標的可配股數；舊持倉可混搭）（2026-05-28）
 
 - [x] **需求**（user 痛點）：A/B/C 三組試算只能填 TWD 金額／% 權重——但「**新標的**」（例：安達）規格是直接配「股數（單位）」，無持倉時 % 算不出來；舊持倉（例：安聯）則該保留 %／TWD 直覺

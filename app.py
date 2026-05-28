@@ -258,7 +258,39 @@ with st.sidebar:
                 except _req.exceptions.Timeout: st.sidebar.error(f"❌ {_nm} Timeout（25s）")
                 except Exception as _e: st.sidebar.error(f"❌ {_nm}：{str(_e)[:120]}")
     if st.sidebar.button("♻️ 強制同步 GitHub 最新邏輯", use_container_width=True):
-        st.rerun()
+        # v18.231：原本只 st.rerun() 不查版本；user 回報 Streamlit Cloud 卡舊版按了沒用。
+        # 改成比對 local HEAD vs remote main → 不同步時給 Cloud Reboot 連結（容器無法 git pull）
+        import subprocess as _sp
+        _repo_dir = os.path.dirname(os.path.abspath(__file__))
+        def _git(args: list[str], timeout: int = 8) -> str:
+            try:
+                return _sp.check_output(
+                    ["git", *args], cwd=_repo_dir, timeout=timeout,
+                    stderr=_sp.DEVNULL,
+                ).decode().strip()
+            except Exception:
+                return ""
+        with st.sidebar.status("檢查版本…", expanded=False):
+            _local = _git(["rev-parse", "--short", "HEAD"]) or "(unknown)"
+            _remote_raw = _git(["ls-remote", "origin", "main"], timeout=12)
+            _remote = (_remote_raw.split()[0][:7] if _remote_raw else "(unknown)")
+        if _local == "(unknown)":
+            st.sidebar.warning("⚠️ 無法讀取本機 commit（git 不可用）")
+        elif _remote == "(unknown)":
+            st.sidebar.warning(f"⚠️ 無法查 remote main（網路或 git 限制）｜本機 `{_local}`")
+        elif _local == _remote:
+            st.sidebar.success(f"✅ 已是 main 最新版（`{_local}`）")
+        else:
+            st.sidebar.warning(
+                f"📦 部署 `{_local}` ← main `{_remote}`\n\n"
+                "Streamlit 不會自動 reload Python module，需重啟容器："
+            )
+            st.sidebar.link_button(
+                "→ Streamlit Cloud Reboot",
+                "https://share.streamlit.io",
+                use_container_width=True,
+            )
+            st.sidebar.caption("本機請 Ctrl+C 後 `streamlit run app.py`")
 
     # ── v18.75 Google 帳號（從 Tab3 expander 搬上來，登入更顯眼）──
     st.divider()
