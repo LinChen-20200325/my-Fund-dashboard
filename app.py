@@ -97,7 +97,7 @@ from models.policy import (
     parse_pk,
 )
 
-APP_VERSION = "v18.2_CoreProtocol"
+APP_VERSION = "v18.232.1_PurposeDim"
 
 # ══════════════════════════════════════════════════════
 # 外國企業中文對照表（持股清單顯示用，零外呼）
@@ -233,6 +233,16 @@ with st.sidebar:
     _upd = st.session_state.get("macro_last_update")
     st.caption(f"📡 總經：{_upd.strftime('%m/%d %H:%M') if _upd else '未載入'}　|　{_now_tw().strftime('%m/%d %H:%M')} TW")
     st.markdown(f"<div style='background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:8px 12px;font-size:11px;color:#888'>App {APP_VERSION} | Engine {ENGINE_VERSION} | Fetcher v6.24</div>", unsafe_allow_html=True)
+    # v18.232.1：部署 beacon — 看到這個紅標代表 Cloud 已 reload 到 v18.232（C 區有「目的」selectbox）
+    st.markdown(
+        "<div style='background:linear-gradient(90deg,#7c3aed,#ec4899);"
+        "border-radius:8px;padding:10px 14px;margin-top:8px;"
+        "font-size:13px;color:#fff;font-weight:700;text-align:center;"
+        "box-shadow:0 2px 8px rgba(124,58,237,0.4)'>"
+        "✨ v18.232 適用中：C 區買方有「🌱配股 / 💰配息 / ⚖️同時」"
+        "</div>",
+        unsafe_allow_html=True,
+    )
     st.divider()
     _proxy_cfg = get_proxy_config()
     _proxy_ep  = ""
