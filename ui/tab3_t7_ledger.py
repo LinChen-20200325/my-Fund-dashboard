@@ -79,18 +79,6 @@ def _t7_units_to_twd(units: float, nav: float, fx: float) -> float:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _t7d_fetch_fund_meta(_code: str) -> dict:
-    """v18.234: D 模式自動抓取基金 metadata（fund_name/currency/series/dividends）。
-    cache 1 小時（user 選擇）；失敗 → dict 含 error 鍵。"""
-    try:
-        from repositories.fund_repository import fetch_fund_multi_source
-        _r = fetch_fund_multi_source(str(_code).strip().upper())
-        return _r if isinstance(_r, dict) else {"error": "non-dict result"}
-    except Exception as _e:
-        return {"error": str(_e), "fund_name": "", "currency": "",
-                "series": None, "dividends": []}
-
-
 def render_t7_section() -> None:
     """渲染 T7 帳務試算 + MK 深度組合建議 AI 子區。
 
@@ -1585,184 +1573,6 @@ def render_t7_section() -> None:
                     _c_cands_pid = [p for p in _c_candidates if _pid_of_pk(p) == _sel_pid]
                     _c_all_pks_pid = [p for p in _c_all_pks if _pid_of_pk(p) == _sel_pid]
 
-                    # v18.233：D 模式（C 內 toggle）— 允許新增不在系統內的自訂基金作買方候選
-                    _d_mode = st.checkbox(
-                        "🆕 **啟用 D 模式**（允許新增不在系統內的「自訂基金」作買方候選）",
-                        value=False, key=f"t7c_d_mode__{_sel_pid}",
-                        help="勾選後可手動輸入代碼/名稱/幣別/NAV/FX，加進買方候選；"
-                             "試算時引擎用你輸入的 NAV/FX 跑 Switch；"
-                             "落帳會建 ledger position，但不會寫回主基金資料庫"
-                             "（避免汙染，需人工確認後正式建檔）。",
-                    )
-                    if _d_mode:
-                        _cust_store = st.session_state.setdefault("t7d_custom_funds", {})
-                        _cust_for_pid = _cust_store.setdefault(_sel_pid, {})
-
-                        with st.expander(
-                            f"➕ 新增自訂基金（保單 {_sel_pid} 已新增 {len(_cust_for_pid)} 檔）",
-                            expanded=(len(_cust_for_pid) == 0),
-                        ):
-                            # v18.234: staging dict + version 控制 widget 預填
-                            _stage_key = f"t7d_stage__{_sel_pid}"
-                            _ver_key = f"t7d_ver__{_sel_pid}"
-                            _stage = st.session_state.setdefault(_stage_key, {
-                                "name": "", "ccy": "USD", "nav": 10.0,
-                                "fx": 31.0, "has_div": False,
-                            })
-                            _ver = st.session_state.setdefault(_ver_key, 0)
-
-                            # 第一排：代碼 + 🔍 自動抓取（多源聚合、cache 1 小時）
-                            _top_cols = st.columns([2, 1.2, 4])
-                            _cd_code = _top_cols[0].text_input(
-                                "代碼（輸入後按右側自動抓取，或直接填下方欄位）",
-                                value="", placeholder="例：JF016 / B07050 / 0050",
-                                key=f"t7d_cd_code__{_sel_pid}",
-                            )
-                            _top_cols[1].write("")  # 對齊高度
-                            if _top_cols[1].button(
-                                "🔍 自動抓取",
-                                key=f"t7d_cd_fetch__{_sel_pid}",
-                                disabled=(not _cd_code.strip()),
-                                use_container_width=True,
-                                help="多源聚合 FundClear/TDCC/MoneyDJ/Cnyes；"
-                                     "結果 cache 1 小時",
-                            ):
-                                with _top_cols[2]:
-                                    with st.spinner(
-                                            f"🔍 抓取 `{_cd_code.strip()}` 中..."):
-                                        _meta = _t7d_fetch_fund_meta(
-                                            _cd_code.strip())
-                                _series = (_meta.get("series")
-                                           if isinstance(_meta, dict) else None)
-                                _has_nav = (_series is not None
-                                            and len(_series.dropna()) > 0)
-                                if not _has_nav:
-                                    _err = (_meta.get("error") or "找不到資料"
-                                            if isinstance(_meta, dict)
-                                            else "unknown")
-                                    _top_cols[2].error(
-                                        f"⚠️ 抓不到 `{_cd_code}`，"
-                                        f"請手動填下方欄位（{str(_err)[:50]}）")
-                                else:
-                                    _nm = (_meta.get("fund_name")
-                                           or _meta.get("name") or "")
-                                    _ccy_g = (_meta.get("currency")
-                                              or "USD").upper().strip()
-                                    _nv = float(_series.dropna().iloc[-1])
-                                    if _ccy_g == "TWD":
-                                        _fxv = 1.0
-                                    else:
-                                        try:
-                                            _fxv = _fx_now(f"{_ccy_g}TWD")
-                                        except Exception:
-                                            _fxv = None
-                                        _fxv = (float(_fxv)
-                                                if _fxv and _fxv > 0 else 31.0)
-                                    _stage.update({
-                                        "name": _nm, "ccy": _ccy_g, "nav": _nv,
-                                        "fx": _fxv,
-                                        "has_div": bool(_meta.get("dividends")),
-                                    })
-                                    st.session_state[_stage_key] = _stage
-                                    st.session_state[_ver_key] = _ver + 1
-                                    _top_cols[2].success(
-                                        f"✅ `{_nm}`　{_ccy_g}　"
-                                        f"NAV={_nv:.4f}　FX={_fxv:.4f}"
-                                        f"　{'💰' if _stage['has_div'] else '🌱'}")
-                                    st.rerun()
-
-                            # 第二排：預填 + 可微調（key 含 ver 觸發重置）
-                            _ver = st.session_state[_ver_key]
-                            _ccys = ["TWD", "USD", "EUR", "JPY", "HKD"]
-                            _cd_cols = st.columns([2, 1, 1.2, 1.2, 0.8])
-                            _cd_name = _cd_cols[0].text_input(
-                                "名稱", value=_stage["name"],
-                                placeholder="例：自訂測試基金",
-                                key=f"t7d_cd_name__{_sel_pid}__v{_ver}",
-                            )
-                            _cd_ccy = _cd_cols[1].selectbox(
-                                "幣別", options=_ccys,
-                                index=(_ccys.index(_stage["ccy"])
-                                       if _stage["ccy"] in _ccys else 1),
-                                key=f"t7d_cd_ccy__{_sel_pid}__v{_ver}",
-                            )
-                            _cd_nav = _cd_cols[2].number_input(
-                                "NAV", min_value=0.0001,
-                                value=float(_stage["nav"]), step=0.5,
-                                format="%.4f",
-                                key=f"t7d_cd_nav__{_sel_pid}__v{_ver}",
-                            )
-                            _cd_fx = _cd_cols[3].number_input(
-                                "FX→TWD", min_value=0.0001,
-                                value=(1.0 if _cd_ccy == "TWD"
-                                       else float(_stage["fx"])),
-                                step=0.5, format="%.4f",
-                                key=f"t7d_cd_fx__{_sel_pid}__v{_ver}",
-                                help="TWD→1.0；USD→約 31；EUR→約 33",
-                            )
-                            _cd_div = _cd_cols[4].checkbox(
-                                "有配息", value=_stage["has_div"],
-                                key=f"t7d_cd_div__{_sel_pid}__v{_ver}",
-                                help="勾→預設「💰 配息」；不勾→預設「🌱 配股」",
-                            )
-                            if st.button(
-                                "➕ 新增到買方候選",
-                                key=f"t7d_cd_add__{_sel_pid}",
-                                disabled=(not _cd_code.strip()
-                                          or not _cd_name.strip()),
-                            ):
-                                _custom_pk = f"{_sel_pid}/{_cd_code.strip()}"
-                                if _custom_pk in _fund_by_pk:
-                                    st.error(
-                                        f"❌ 代碼 `{_cd_code}` 已存在系統內，請改名")
-                                elif _custom_pk in _cust_for_pid:
-                                    st.warning(f"⚠️ 代碼 `{_cd_code}` 已加過")
-                                else:
-                                    _cust_for_pid[_custom_pk] = {
-                                        "code": _cd_code.strip(),
-                                        "name": _cd_name.strip(),
-                                        "currency": _cd_ccy,
-                                        "fx_rate": float(_cd_fx),
-                                        "series": pd.Series([float(_cd_nav)]),
-                                        "dividends": (
-                                            [] if not _cd_div else
-                                            [{"date": "2026-01-01", "amount": 0.0}]),
-                                        "policy_id": _sel_pid,
-                                        "_is_custom_d": True,
-                                    }
-                                    # 加完清 staging 等下一檔
-                                    st.session_state[_stage_key] = {
-                                        "name": "", "ccy": "USD", "nav": 10.0,
-                                        "fx": 31.0, "has_div": False,
-                                    }
-                                    st.session_state[_ver_key] = _ver + 1
-                                    st.success(f"✅ 已新增 `{_cd_code}` 到買方候選")
-                                    st.rerun()
-
-                            if _cust_for_pid:
-                                st.markdown("**已新增的自訂基金**：")
-                                for _cpk, _cf in list(_cust_for_pid.items()):
-                                    _rcols = st.columns([5, 1])
-                                    _rcols[0].caption(
-                                        f"`{_cf['code']}`　{_cf['name']}　"
-                                        f"{_cf['currency']}　"
-                                        f"NAV={_cf['series'].iloc[-1]:.4f}　"
-                                        f"FX={_cf['fx_rate']:.4f}　"
-                                        f"{'💰' if _cf['dividends'] else '🌱'}"
-                                    )
-                                    if _rcols[1].button(
-                                            "🗑️", key=f"t7d_cd_rm_{_cpk}"):
-                                        del _cust_for_pid[_cpk]
-                                        st.rerun()
-
-                        # merge custom 進 lookup dicts 和 _c_all_pks_pid（local mutate）
-                        for _cpk, _cf in _cust_for_pid.items():
-                            if _cpk not in _fund_by_pk:
-                                _fund_by_pk[_cpk] = _cf
-                                _name_lookup_t7[_cpk] = _cf["name"]
-                                _dy_lookup_t7[_cpk] = 0.0
-                                _c_all_pks_pid.append(_cpk)
-
                     if len(_c_cands_pid) < 1:
                         st.warning(f"⚠️ 保單 `{_sel_pid}` 下無任何持倉部位，無法執行轉換。")
                         _sell_pks = []
@@ -2186,10 +1996,6 @@ def render_t7_section() -> None:
                                             _income_total_twd += _income_share
                                             # v18.27: dual-write 收集 (sell + buy 各一筆)
                                             _today_iso = _d_t7.today().isoformat()
-                                            # v18.233：custom 基金加 [D 自訂] 標記方便 Sheet 端辨識
-                                            _Bf_cust = _fund_by_pk.get(_bpk) or {}
-                                            _d_tag = (" [D 自訂]"
-                                                if _Bf_cust.get("_is_custom_d") else "")
                                             if _spid:
                                                 _c_rows_by_pid.setdefault(_spid, []).append({
                                                     "date":          _today_iso,
@@ -2199,7 +2005,7 @@ def render_t7_section() -> None:
                                                     "nav_at_action": float(_S["nav"]),
                                                     "twd":           float(_sr.twd_cost_basis_transferred),
                                                     "fee":           0.0,
-                                                    "note":          f"T7 C 轉換 → {_bcode_disp}（{_purpose_disp}）{_d_tag}",
+                                                    "note":          f"T7 C 轉換 → {_bcode_disp}（{_purpose_disp}）",
                                                 })
                                             if _bpid:
                                                 _c_rows_by_pid.setdefault(_bpid, []).append({
@@ -2210,7 +2016,7 @@ def render_t7_section() -> None:
                                                     "nav_at_action": float(_Bd["nav"]),
                                                     "twd":           float(_sr.twd_cost_basis_transferred),
                                                     "fee":           0.0,
-                                                    "note":          f"T7 C 轉換 ← {_scode_disp}（{_purpose_disp}）{_d_tag}",
+                                                    "note":          f"T7 C 轉換 ← {_scode_disp}（{_purpose_disp}）",
                                                 })
                                             # v18.232：純 % — 賣端 & 買端配置都顯示 %
                                             # _purpose_disp 與 _stock/income 累計已在 dual-write 前算
