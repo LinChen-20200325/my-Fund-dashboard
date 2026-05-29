@@ -2137,6 +2137,20 @@ def render_macro_tab() -> None:
                 except Exception as _e_imp:
                     st.caption(f"⚠️ 變數重要性計算失敗：{str(_e_imp)[:80]}")
 
+            # ── 熱錢監測（v18.236）— 三角交叉：外資 × 匯率 × 背離 ──
+            # 境外基金 user 仍要看：台幣匯率變動 → 影響你 USD/EUR 計價基金 TWD 換算後報酬
+            st.divider()
+            with st.expander("💵 台股熱錢監測 — 三角交叉（影響你境外基金 TWD 換匯）",
+                             expanded=False):
+                try:
+                    from hot_money import render_hot_money_section
+                    _finmind_tok = (st.secrets.get("FINMIND_TOKEN", "")
+                                     if hasattr(st, "secrets") else "") or ""
+                    render_hot_money_section(token=_finmind_tok,
+                                              key_prefix="tab1_hm")
+                except Exception as _hme:
+                    st.error(f"熱錢監測渲染失敗：[{type(_hme).__name__}] {_hme}")
+
             # ── MK 景氣時鐘 ＆ 資產輪動（v18.8）── L2/L3 皆顯示
             st.divider()
             render_mk_clock_section(ind)

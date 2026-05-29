@@ -246,6 +246,19 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.236 — 新：熱錢監測（外資 × 匯率 × 背離偵測）整合進 Tab1 總經（2026-05-29）
+
+- [x] **背景**：user 上傳獨立 Streamlit demo `a731802d-app.py`，請求整合進兩倉。股票倉 PR #101 完成；本 PR 移植到基金倉
+- [x] **新模組** `hot_money.py`:
+  - 純函式：`build_signals(flow_df, fx_df, window, flow_thr, fx_thr)`（9 狀態向量化分類）+ `_yf_series_to_df`（fetch_yf_close pd.Series → 標準 df，含 tz-aware 拆解）
+  - 常數：`STATE_TEXT`（境外基金特化白話解讀）+ `DIVERGENCE_STATES`
+  - 資料層（30min cache）：`fetch_foreign_flow_series(days, token)` 走 `fund_fetcher.fetch_url_with_retry` 打 FinMind；`fetch_usdtwd_series(days)` 複用 `repositories.macro_repository.fetch_yf_close('USDTWD=X')` (NAS proxy)
+  - UI 層：`render_hot_money_section(token, key_prefix)` inline 4-slider 控制 + 4 metric + altair 象限圖 + 時序圖 + 背離事件清單
+- [x] **整合位置** `ui/tab1_macro.py:2141`（MK 景氣時鐘前）加 expander「💵 台股熱錢監測 — 三角交叉（影響你境外基金 TWD 換匯）」，從 `st.secrets["FINMIND_TOKEN"]` 取 token（可空）
+- [x] **境外基金特化** `STATE_TEXT` 每個狀態都加「對你 USD/EUR 計價基金 TWD 換算後的影響」說明（與股票倉版的台股直接判讀有別）
+- [x] **單元測試** `test_hot_money.py` 15 個：9 個 `build_signals` state 分類 + 4 個 `_yf_series_to_df` series 解析 + 2 個常數/邊界
+- [x] **驗證** `py_compile` ✅；`test_hot_money + test_policy_store + test_v2_editor + test_migrate + test_portfolio_load = 139/139 pass`
+
 ### v18.235 — 移除：D 模式「+ 新增自訂基金」整個區塊（2026-05-29）
 
 - [x] **背景**：user 反饋 v18.233/234 加的「新增自訂基金」自動抓取功能有 bug — 表格上方已存在 `ACCP138`，但下方 D 模式自動抓取卻回 `'NoneType' object is not subscriptable`。同時 user 表示要把整個 D 模式手動新增區塊**全部移除**（不再使用 D 模式做自訂買方候選）
