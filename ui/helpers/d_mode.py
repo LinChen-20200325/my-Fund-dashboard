@@ -15,15 +15,20 @@ v18.234 原 bug 復原（NoneType subscript）：本 fetch helper 保證 dict sc
 from __future__ import annotations
 
 
-def fetch_fund_meta_safe(code: str, _fetch=None, _fx_lookup=None) -> dict:
+def fetch_fund_meta_safe(code: str, _fetch=None, _fx_lookup=None,
+                          _existing=None) -> dict:
     """從 MoneyDJ + 多源抓基金 metadata，**永遠回完整 schema 的 dict**。
 
     Args:
         code: 基金代碼
         _fetch: 注入式 fetcher（測試用），None → lazy import
-                `repositories.fund_repository.fetch_fund_multi_source`
+                `fund_fetcher.fetch_fund_from_moneydj_url`（v18.241 改用主流程）
         _fx_lookup: 注入式 FX 查詢（測試用），None → lazy import
                     `fund_fetcher.get_latest_fx`
+        _existing: v18.242 in-session cache。dict[code → fund_dict]，
+                   code 命中且 series 有效 → 秒回不再呼叫 fetcher。
+                   fund_dict 期待 schema：name/currency/series/dividends/
+                   fx_avg(或 fx_rate)/policy_id。
 
     Returns:
         {
@@ -52,6 +57,36 @@ def fetch_fund_meta_safe(code: str, _fetch=None, _fx_lookup=None) -> dict:
     if not _code:
         out["error"] = "代碼為空"
         return out
+
+    # v18.242: 先查 in-session cache（user 反饋「曾經抓過的不需要重複抓取」）
+    if _existing:
+        _hit = _existing.get(_code)
+        if _hit is not None:
+            try:
+                _hs = _hit.get("series")
+                if _hs is not None and hasattr(_hs, "dropna"):
+                    _hs = _hs.dropna()
+                    if len(_hs) > 0:
+                        _ccy = str(_hit.get("currency") or "USD").upper().strip()
+                        _fx = _hit.get("fx_avg") or _hit.get("fx_rate") or 0
+                        out.update({
+                            "ok": True,
+                            "fund_name": (str(_hit.get("name") or "").strip()
+                                          or _code),
+                            "currency": _ccy,
+                            "nav": float(_hs.iloc[-1]),
+                            "fx": (1.0 if _ccy == "TWD"
+                                   else (float(_fx) if _fx and float(_fx) > 0
+                                         else 31.0)),
+                            "series": _hs,
+                            "dividends": list(_hit.get("dividends") or []),
+                            "from_cache": True,
+                            "cache_pid": str(_hit.get("policy_id") or ""),
+                        })
+                        return out
+            except Exception:
+                pass  # 任何錯誤都安全 fallback 到網路 fetch
+
     try:
         if _fetch is None:
             # v18.241: 改用主流程 entry point fetch_fund_from_moneydj_url

@@ -246,6 +246,15 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [x] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）→ **v18.238 收尾**：`_EXPANDER_LIKE_ATTRS` 已擴成 `(expander, status, popover, dialog)` 四件套
 
+### v18.242 — 新：D 模式「已抓過不重複抓」— portfolio_funds in-session cache（2026-05-29）
+
+- [x] **user 反饋**：「如果曾經抓過的就不需要重複抓取」
+- [x] **方案**：helper `ui/helpers/d_mode.py:fetch_fund_meta_safe` 加 `_existing` 參數（dict[code → fund_dict]）。code 命中且 series 有效 → 秒回 + `from_cache=True` + `cache_pid`，不呼叫 fetcher
+- [x] **caller** `ui/tab3_t7_ledger.py` 路徑 B 的 🔍 自動抓取 button 內，組 `{code: fund_dict for fund in portfolio_funds if series 有}` 傳進；UI 訊息按 `from_cache` 區分「⚡ 已抓過直接帶入（來自保單 X）」vs「✅ 線上抓取」
+- [x] **既有行為不變**：DI 參數 `_existing` 預設 None；caller 不傳就走原 fetch path
+- [x] **單元測試** test_t7d_fetch_meta.py 加 3 個（21 個 → 全綠）：existing 命中 short-circuit / existing miss fallback / existing series=None fallback
+- [x] **驗證** AST OK；`pytest -m "not slow"` **664 passed**
+
 ### v18.241 — 改：D 模式抓取改用主流程 entry point（user 質疑「為何不重用」）（2026-05-29）
 
 - [x] **user 質疑**：「本來就有抓取的功能，不能套用本來的抓取嗎？」+ 截圖 v18.240 新 error 訊息（被截：「at fu...」，已確認指向 fund_repository / fund_fetcher 內某行）
