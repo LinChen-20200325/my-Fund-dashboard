@@ -217,3 +217,62 @@ def test_dividends_none_returns_empty_list():
         }))
     assert out["ok"] is True
     assert out["dividends"] == []
+
+
+# ════════════════════════════════════════════════════
+# v18.242: in-session cache (existing) 命中秒回不再呼叫 fetcher
+# ════════════════════════════════════════════════════
+def test_existing_hit_short_circuits_fetch():
+    """existing 命中且 series 有效 → ok=True + from_cache=True，_fetch 不被呼叫"""
+    _fetch_called = []
+    def _fake_fetch(_c):
+        _fetch_called.append(_c)
+        return {}
+    existing = {
+        "ACCP138": {
+            "code": "ACCP138", "name": "翰亞 ABC", "currency": "TWD",
+            "series": pd.Series([12.34, 12.40, 12.45]), "dividends": [],
+            "fx_avg": 1.0, "policy_id": "PID-1",
+        },
+    }
+    out = fetch_fund_meta_safe("accp138", _fetch=_fake_fetch,
+                                _fx_lookup=lambda _: 1.0, _existing=existing)
+    assert out["ok"] is True
+    assert out["from_cache"] is True
+    assert out["cache_pid"] == "PID-1"
+    assert out["fund_name"] == "翰亞 ABC"
+    assert out["currency"] == "TWD"
+    assert out["nav"] == 12.45
+    assert _fetch_called == []  # fetcher 不被呼叫
+
+
+def test_existing_miss_falls_back_to_fetch():
+    """existing 不命中 → 走 fetch path（既有行為不變）"""
+    existing = {"OTHER": {"series": pd.Series([1.0]), "name": "X"}}
+    out = fetch_fund_meta_safe(
+        "NEW001",
+        _fetch=lambda _c: {
+            "fund_name": "New Fund", "currency": "USD",
+            "series": pd.Series([10.0, 10.5]), "dividends": [],
+        },
+        _fx_lookup=lambda _: 31.5, _existing=existing,
+    )
+    assert out["ok"] is True
+    assert out.get("from_cache", False) is False
+    assert out["fund_name"] == "New Fund"
+
+
+def test_existing_invalid_series_falls_back_to_fetch():
+    """existing 命中但 series 是 None / 空 → fallback 到 fetch"""
+    existing = {"X": {"name": "X", "series": None}}
+    out = fetch_fund_meta_safe(
+        "X",
+        _fetch=lambda _c: {
+            "fund_name": "X-via-fetch", "currency": "USD",
+            "series": pd.Series([10.0]), "dividends": [],
+        },
+        _fx_lookup=lambda _: 31.0, _existing=existing,
+    )
+    assert out["ok"] is True
+    assert out.get("from_cache", False) is False
+    assert out["fund_name"] == "X-via-fetch"

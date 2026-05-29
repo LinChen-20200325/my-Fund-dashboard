@@ -78,14 +78,11 @@ def _t7_units_to_twd(units: float, nav: float, fx: float) -> float:
     return float(units) * float(nav) * float(fx)
 
 
-def _t7d_fetch_fund_meta(code: str) -> dict:
+def _t7d_fetch_fund_meta(code: str, existing=None) -> dict:
     """v18.239: 薄殼 delegate 到 `ui.helpers.d_mode.fetch_fund_meta_safe`。
-
-    搬移理由：let helper module 不拖 `bs4` / `fund_repository` 等重依賴，
-    讓單元測試在 minimal env 也能跑（避免 ImportError 卡住整套件 collection）。
-    """
+    v18.242: 加 `existing` (dict[code→fund_dict]) — 已抓過秒回不重抓。"""
     from ui.helpers.d_mode import fetch_fund_meta_safe
-    return fetch_fund_meta_safe(code)
+    return fetch_fund_meta_safe(code, _existing=existing)
 
 
 def render_t7_section() -> None:
@@ -1680,9 +1677,17 @@ def render_t7_section() -> None:
                                     disabled=(not _new_code),
                                     use_container_width=True,
                                 ):
+                                    # v18.242: 已抓過的不重抓 — 組 portfolio_funds 的
+                                    # code→fund 字典傳進 helper 做 in-session cache lookup
+                                    _existing_by_code = {
+                                        str(_f.get("code", "")).strip().upper(): _f
+                                        for _f in st.session_state.portfolio_funds
+                                        if _f.get("code") and _f.get("series") is not None
+                                    }
                                     with _top_cols[2]:
                                         with st.spinner(f"🔍 抓取 `{_new_code}` 中..."):
-                                            _meta = _t7d_fetch_fund_meta(_new_code)
+                                            _meta = _t7d_fetch_fund_meta(
+                                                _new_code, existing=_existing_by_code)
                                     if not _meta.get("ok"):
                                         _top_cols[2].error(
                                             f"⚠️ 抓不到 `{_new_code}`：{_meta.get('error', '未知')[:60]}"
@@ -1705,8 +1710,15 @@ def render_t7_section() -> None:
                                                 "policy_id": _sel_pid,
                                                 "_is_custom_d": True,
                                             }
+                                            _from_cache = _meta.get("from_cache", False)
+                                            _cache_pid = _meta.get("cache_pid", "")
+                                            _src_msg = (
+                                                f"⚡ 已抓過直接帶入（來自保單 `{_cache_pid}`）"
+                                                if _from_cache else
+                                                "✅ 線上抓取"
+                                            )
                                             _top_cols[2].success(
-                                                f"✅ `{_meta['fund_name']}`　{_meta['currency']}　"
+                                                f"{_src_msg}：`{_meta['fund_name']}`　{_meta['currency']}　"
                                                 f"NAV={_meta['nav']:.4f}　FX={_meta['fx']:.4f}"
                                             )
                                             st.rerun()

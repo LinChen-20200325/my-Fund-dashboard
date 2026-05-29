@@ -97,7 +97,7 @@ from models.policy import (
     parse_pk,
 )
 
-APP_VERSION = "v18.241_DReuseMain"
+APP_VERSION = "v18.242_DCacheReuse"
 
 # ══════════════════════════════════════════════════════
 # 外國企業中文對照表（持股清單顯示用，零外呼）
@@ -239,7 +239,7 @@ with st.sidebar:
         "border-radius:8px;padding:10px 14px;margin-top:8px;"
         "font-size:13px;color:#fff;font-weight:700;text-align:center;"
         "box-shadow:0 2px 8px rgba(124,58,237,0.4)'>"
-        "✨ v18.241：D 模式抓取改用主流程 entry point（fetch_fund_from_moneydj_url）— mapping + 容錯一次到位"
+        "✨ v18.242：D 模式「已抓過直接帶入」— portfolio_funds in-session cache，不重複抓取"
         "</div>",
         unsafe_allow_html=True,
     )
