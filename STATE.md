@@ -246,6 +246,17 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.235 — 移除：D 模式「+ 新增自訂基金」整個區塊（2026-05-29）
+
+- [x] **背景**：user 反饋 v18.233/234 加的「新增自訂基金」自動抓取功能有 bug — 表格上方已存在 `ACCP138`，但下方 D 模式自動抓取卻回 `'NoneType' object is not subscriptable`。同時 user 表示要把整個 D 模式手動新增區塊**全部移除**（不再使用 D 模式做自訂買方候選）
+- [x] **變更** (`ui/tab3_t7_ledger.py`):
+  - 砍 `_t7d_fetch_fund_meta()` helper（10 行）
+  - 砍 C 區 D 模式 UI block（178 行：checkbox toggle / 自動抓取 / 預填 + 微調 / 新增到買方候選 / 已新增清單 / merge custom 進 lookup dicts）
+  - 砍 dual-write 部分的 `_d_tag` / `_Bf_cust` / `_is_custom_d` 標記（5 行）
+  - 總計 −193 行
+- [x] **影響範圍**：原本 D 模式允許 user 加入「不在系統內」的買方基金，現在 C 轉換只能在保單內既有持倉間互轉。bug 自然消失（沒有 D 模式 UI 就沒有抓取邏輯）
+- [x] **驗證** `py_compile` ✅；`test_policy_store + test_v2_editor + test_migrate_v149_schema + test_portfolio_load = 124/124 pass`
+
 ### v18.234 — 改：D 模式加「🔍 自動抓取」（輸入代碼自動填名稱/幣別/NAV/FX/配息）（2026-05-29）
 
 - [x] **需求**（user，附 v18.233 截圖）：「這邊可以給出代碼並可以自動抓取基金資料，然後轉換依樣是賣出多少百分轉給買方」
