@@ -78,17 +78,26 @@ def _t7_units_to_twd(units: float, nav: float, fx: float) -> float:
     return float(units) * float(nav) * float(fx)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
 def _t7d_fetch_fund_meta(_code: str) -> dict:
-    """v18.234: D 模式自動抓取基金 metadata（fund_name/currency/series/dividends）。
-    cache 1 小時（user 選擇）；失敗 → dict 含 error 鍵。"""
+    """v18.234.1: D 模式自動抓取基金 metadata；改用 session_state 手動 cache
+    （1 小時 TTL），避開「@st.cache_data 在 module top + 緊接 render_t7_section」
+    觸發 CachedWidgetWarning 的 cloud-side 邊角案例。"""
+    import time
+    _cache = st.session_state.setdefault("__t7d_fetch_cache__", {})
+    _key = str(_code).strip().upper()
+    _hit = _cache.get(_key)
+    _now = time.time()
+    if _hit and (_now - _hit["t"] < 3600):
+        return _hit["v"]
     try:
         from repositories.fund_repository import fetch_fund_multi_source
-        _r = fetch_fund_multi_source(str(_code).strip().upper())
-        return _r if isinstance(_r, dict) else {"error": "non-dict result"}
+        _r = fetch_fund_multi_source(_key)
+        _v = _r if isinstance(_r, dict) else {"error": "non-dict result"}
     except Exception as _e:
-        return {"error": str(_e), "fund_name": "", "currency": "",
-                "series": None, "dividends": []}
+        _v = {"error": str(_e), "fund_name": "", "currency": "",
+              "series": None, "dividends": []}
+    _cache[_key] = {"t": _now, "v": _v}
+    return _v
 
 
 def render_t7_section() -> None:

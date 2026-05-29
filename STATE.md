@@ -246,6 +246,13 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.234.1 — 修：移除 @st.cache_data，改 session_state 手動 cache（修 CachedWidgetWarning）（2026-05-29）
+
+- [x] **症狀**（user 截圖）：v18.234 上 cloud 後紅色錯誤訊息 `CachedWidgetWarning: Your script uses a widget command in a cached function`，traceback 指 `render_t7_section` line 563 的 `with st.form("t7_init_pos_form")` 被當成 cached function 內 widget
+- [x] **根因猜測**：cloud-side（Streamlit on Python 3.14）對「`@st.cache_data` 裝飾的 module top-level 函式 + 緊接的 `render_t7_section`」有罕見 wrapping 邊角案例，把 `render_t7_section` 內 widget 一併認為「在 cached function context」內
+- [x] **修法**：移除 `@st.cache_data(ttl=3600)` 裝飾器，改用 `session_state["__t7d_fetch_cache__"][code] = {"t": timestamp, "v": result}` 手動 cache，TTL 1 小時邏輯一致；額外好處：cache 是 per-session（更安全、不會 cross-user 污染）
+- [x] **驗證** AST OK；`pytest -m "not slow"` **640 passed**；ruff 零新增
+
 ### v18.234 — 改：D 模式加「🔍 自動抓取」（輸入代碼自動填名稱/幣別/NAV/FX/配息）（2026-05-29）
 
 - [x] **需求**（user，附 v18.233 截圖）：「這邊可以給出代碼並可以自動抓取基金資料，然後轉換依樣是賣出多少百分轉給買方」

@@ -448,16 +448,19 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 - 抓不到（meta error 或 series 為空）→ red error 訊息「⚠️ 抓不到 X，請手動填」+ widget 維持空白
 - 抓到部分（NAV 有 FX 沒）→ 已抓到的預填、缺的留 user 補
 
-**cache helper**（module-level）：
+**cache helper**（module-level，v18.234.1 改為手動 session_state cache）：
 ```python
-@st.cache_data(ttl=3600, show_spinner=False)
 def _t7d_fetch_fund_meta(_code: str) -> dict:
-    try:
-        from repositories.fund_repository import fetch_fund_multi_source
-        return fetch_fund_multi_source(_code.strip().upper())
-    except Exception as e:
-        return {"error": str(e), ...}
+    # session_state["__t7d_fetch_cache__"][code] = {"t": ts, "v": result}
+    # TTL 1 小時。改用手動 cache 是為了避開「@st.cache_data + 緊接 render_t7_section」
+    # 在 cloud-side Streamlit/Python 3.14 觸發的 CachedWidgetWarning 罕見邊角案例。
+    ...
 ```
+
+**v18.234.1 修法摘要**（symptom：cloud 紅色 `CachedWidgetWarning`，traceback 指 `render_t7_section` 內 `with st.form(...)` 被當 cached widget）：
+- 移除 `@st.cache_data(ttl=3600)`
+- 改 `st.session_state["__t7d_fetch_cache__"]` 手動 dict cache，TTL 邏輯一致
+- 額外好處：per-session 不會 cross-user 污染
 
 **位置** `ui/tab3_t7_ledger.py`：
 - module-level cached helper `_t7d_fetch_fund_meta` L82-93
