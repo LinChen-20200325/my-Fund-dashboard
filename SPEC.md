@@ -430,6 +430,43 @@ _view_pick = st.segmented_control("選擇分析視角", _view_options,
 
 ---
 
+### §3-AZ C 區 D 模式（C 內 toggle）— 允許新增「自訂基金」作買方候選（v18.233 新增）
+
+**痛點**：投資型保單實務中偶爾會出現「**買方標的不在系統 portfolio_funds 內**」的情境（user 想試算「如果換成這檔新基金、其他配置不變的試算」、或者基金代碼系統還沒收錄）。
+
+**設計**（user 選的方案：「C 內 toggle」）：
+- C 區頂部加 `🆕 啟用 D 模式` checkbox（不開新 tab、不複製 600 行）
+- D 模式 on → 顯示「➕ 新增自訂基金」expander，widget：代碼／名稱／幣別／NAV／FX→TWD／是否有配息（checkbox）
+- session 端 isolation：`session_state.t7d_custom_funds[保單] = {pk: fund_dict}`
+- fund dict 結構：`{code, name, currency, fx_rate, series=pd.Series([nav]), dividends=[...], policy_id, _is_custom_d=True}`
+- 已新增列表顯示在 expander 內，每筆右側有 🗑️ 移除按鈕
+
+**local merge（只在 _tC scope）**：
+- `_fund_by_pk[custom_pk] = custom_fund`
+- `_name_lookup_t7[custom_pk] = custom_name`
+- `_dy_lookup_t7[custom_pk] = 0.0`
+- `_c_all_pks_pid.append(custom_pk)` → 自動進「買方標的（複選）」候選
+- 自動進「目的」selectbox 預設邏輯（dividends 非空 → 預設 💰，空 → 🌱）
+
+**引擎零變動**：
+- `_ledger_for(pk)` 對找不到的 pk 自動建空 ledger（既有 fallback）
+- `Switch.switch_same/cross_currency` 對空 buyer 正常工作（首次當 buyer 會建 position）
+- `_latest_nav_fx_t7` 的 `series.dropna().iloc[-1]` fallback 自動拿到 user 輸入的 NAV；`fx_rate` 提供 FX fallback
+
+**不寫回主資料庫**（避免汙染）：
+- custom 不 upsert 進 portfolio_funds
+- ledger position 只活在 session
+- dual-write Sheet 行的 note 加 `[D 自訂]` 標記方便人工辨識後正式建檔
+
+**位置** `ui/tab3_t7_ledger.py`（C 區頂部插入）：
+- D mode checkbox + 自訂基金 expander L1574-1665
+- local merge custom 進 lookup dicts L1667-1672
+- dual-write note `[D 自訂]` 標記 L2094-2096 / L2106 / L2117
+
+**驗證**：AST OK；`pytest -m "not slow"` **640 passed**；ruff 零新增。
+
+---
+
 ### §3-AY C 區買方端「目的」維度（配股/配息/⚖️ 同時拆兩段）（v18.232 新增；簡化 §3-AX）
 
 **痛點 + user 修正**：v18.230（§3-AX）把 A/B/C 都加了「% / 單位」mode，但 user 截圖反饋「**非單位數，只留百分比，但這百分比可以選擇配股數或是配現金**」——`📊 % vs 🎯 單位` 不是 user 要的維度；user 要的是「**% 額度的去向：配股（累積）或配息（領現金）**」，同一標的還可拆兩段。

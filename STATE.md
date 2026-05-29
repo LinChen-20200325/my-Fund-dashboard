@@ -246,6 +246,16 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [ ] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）
 
+### v18.233 — 新：C 區 D 模式（C 內 toggle）— 允許新增「自訂基金」作買方候選（2026-05-29）
+
+- [x] **需求**（user）：「請幫我增加 D，在原來 C 的架構（C 原來功能保留）上新增可新增其他標的」；釐清「其他標的 = 手動新增自訂基金」+「賣方不跨保單」
+- [x] **方案**（user 選「C 內 toggle」）：不開新 tab、不複製 600 行；C 區頂部加「🆕 啟用 D 模式」checkbox，on 時顯示「➕ 新增自訂基金」expander（代碼/名稱/幣別/NAV/FX/是否配息）+ 已新增列表 + 🗑️ 移除按鈕
+- [x] **session 端 isolation**：`session_state.t7d_custom_funds[保單] = {pk: fund_dict}`；fund dict 用 `series=pd.Series([nav])` 讓現有 `_latest_nav_fx_t7` fallback 自動拿到；`fx_rate` 提供 FX fallback；`_is_custom_d=True` 作辨識
+- [x] **local merge**（只在 _tC scope）：custom 合進 `_fund_by_pk` / `_name_lookup_t7` / `_dy_lookup_t7` / `_c_all_pks_pid`，沿用既有 widget／引擎邏輯（自動進買方候選 multiselect、自動進「目的」selectbox 預設邏輯——配息有 → 💰、無 → 🌱）
+- [x] **引擎不動**：`_ledger_for(pk)` 對找不到的 pk 自動建空 ledger；Switch.switch_same/cross 對空 buyer 正常工作；首次當 buyer 會在 session 端建 position
+- [x] **不寫回主資料庫**（避免汙染）：custom 不會 upsert 進 portfolio_funds；ledger position 只活在 session；dual-write Sheet 行的 note 加 `[D 自訂]` 標記方便人工辨識後正式建檔
+- [x] **驗證** AST OK；`pytest -m "not slow"` **640 passed**/1 skipped；ruff `tab3_t7_ledger` 零新增
+
 ### v18.232 — 改：C 區移除單位數模式、純 %；每檔 % 加「目的」維度（配股/配息/⚖️ 同時）（2026-05-28）
 
 - [x] **需求**（user 截圖 + 對話）：v18.230 把分配模式拆「% / 單位」反而複雜；user 真正要的是「**非單位數，只留百分比，但這百分比可以選擇配股數或是配現金**」——單位數模式拿掉、% 留下、% 標目的（配股=累積／配息=領現金）
