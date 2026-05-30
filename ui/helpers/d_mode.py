@@ -80,6 +80,9 @@ def fetch_fund_meta_safe(code: str, _fetch=None, _fx_lookup=None,
                                          else 31.0)),
                             "series": _hs,
                             "dividends": list(_hit.get("dividends") or []),
+                            # v18.246: 帶 metrics + moneydj_raw 給 _get_dy_t7
+                            "metrics": dict(_hit.get("metrics") or {}),
+                            "moneydj_raw": dict(_hit.get("moneydj_raw") or {}),
                             "from_cache": True,
                             "cache_pid": str(_hit.get("policy_id") or ""),
                         })
@@ -134,6 +137,11 @@ def fetch_fund_meta_safe(code: str, _fetch=None, _fx_lookup=None,
                           or _code)
     out["currency"] = str(_r.get("currency") or "USD").strip().upper()
     out["dividends"] = list(_r.get("dividends") or [])
+    # v18.246: 帶 metrics + moneydj_raw 給 _get_dy_t7（沒這兩個 key → dy = 0）
+    out["metrics"] = dict(_r.get("metrics") or {})
+    _mj = (_r.get("moneydj_raw")
+           or {"moneydj_div_yield": _r.get("moneydj_div_yield")})
+    out["moneydj_raw"] = dict(_mj or {})
 
     if out["currency"] == "TWD":
         out["fx"] = 1.0

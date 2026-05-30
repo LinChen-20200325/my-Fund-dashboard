@@ -1661,6 +1661,9 @@ def render_t7_section() -> None:
                                                     "fx_rate":     float(_src_f.get("fx_avg") or 31.0),
                                                     "series":      _src_series,
                                                     "dividends":   list(_src_f.get("dividends") or []),
+                                                    # v18.246: 借時也帶 metrics + moneydj_raw（dy 才算得出來）
+                                                    "metrics":     dict(_src_f.get("metrics") or {}),
+                                                    "moneydj_raw": dict(_src_f.get("moneydj_raw") or {}),
                                                     "policy_id":   _sel_pid,
                                                     "_is_custom_d": True,
                                                     "_borrowed_from": _src_pid,
@@ -1714,6 +1717,9 @@ def render_t7_section() -> None:
                                                 "fx_rate":   float(_meta["fx"]),
                                                 "series":    _meta["series"],
                                                 "dividends": _meta["dividends"],
+                                                # v18.246: fetch 也帶 metrics + moneydj_raw（_get_dy_t7 才有值）
+                                                "metrics":   dict(_meta.get("metrics") or {}),
+                                                "moneydj_raw": dict(_meta.get("moneydj_raw") or {}),
                                                 "policy_id": _sel_pid,
                                                 "_is_custom_d": True,
                                             }
