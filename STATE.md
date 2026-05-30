@@ -246,6 +246,17 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [x] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）→ **v18.238 收尾**：`_EXPANDER_LIKE_ATTRS` 已擴成 `(expander, status, popover, dialog)` 四件套
 
+### v18.246 — 修：D 模式 fund「預估年配息 = 0」— fund dict 缺 metrics + moneydj_raw（2026-05-29）
+
+- [x] **症狀**（user 截圖 + 反饋）：v18.245 複合轉換守恆通過，但 ACTI71 預估年配息 = NT$0；user 反饋「之前的保單也有這檔聯博」（保單 31611267318 ACTI71 累積已配 19.66%）
+- [x] **root cause**：`_get_dy_t7(_fund)` 依序找 `moneydj_raw.moneydj_div_yield` → `metrics.annual_div_rate` → 0；D 模式 fund dict 從 v18.233 起只帶 `{code, name, currency, fx_rate, series, dividends, policy_id, _is_custom_d}`，兩個 dy 來源 key 都沒 → 永遠 fallback 0
+- [x] **修法**（v18.246）：
+  - helper `ui/helpers/d_mode.py` cache hit + fetch 兩條 path 的 out 都加 `metrics` + `moneydj_raw`（fetch path：`moneydj_raw = {moneydj_div_yield: result["moneydj_div_yield"]}` 因為 fetcher 是 flat key）
+  - UI 路徑 A 借用：`_cust_for_pid` 帶 `metrics` + `moneydj_raw`（從 `_src_f` 複製）
+  - UI 路徑 B fetch：`_cust_for_pid` 帶 `metrics` + `moneydj_raw`（從 `_meta` 取）
+- [x] **意義**：D 模式 fund 從此走 `_get_dy_t7` 跟「主流程載入的 fund」同行為 — 年配息率算得出來
+- [x] **驗證** AST OK；`pytest -m "not slow"` **665 passed**；test_t7d_fetch_meta + test_fund_ledger 共 52 個全綠
+
 ### v18.245 — 修：v18.244 還是報「美元 → USD」— 把 normalize 拉進 service layer（2026-05-29）
 
 - [x] **症狀**（user 三度回報）：v18.244 雙重保險仍報「switch_same_currency: 幣別不符 (美元 → USD)」
