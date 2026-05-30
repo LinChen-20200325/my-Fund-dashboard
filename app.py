@@ -97,7 +97,7 @@ from models.policy import (
     parse_pk,
 )
 
-APP_VERSION = "v18.246_DCarryMetrics"
+APP_VERSION = "v18.247_DAutoEnrich"
 
 # ══════════════════════════════════════════════════════
 # 外國企業中文對照表（持股清單顯示用，零外呼）
@@ -239,7 +239,7 @@ with st.sidebar:
         "border-radius:8px;padding:10px 14px;margin-top:8px;"
         "font-size:13px;color:#fff;font-weight:700;text-align:center;"
         "box-shadow:0 2px 8px rgba(124,58,237,0.4)'>"
-        "✨ v18.246：D 模式 fund 帶 metrics + moneydj_raw（_get_dy_t7 抓得到年配息率，不再 0）"
+        "✨ v18.247：D 模式 _dy_lookup 不再 hard-code 0 + 舊 fund auto-enrich 從 portfolio_funds 借 metrics"
         "</div>",
         unsafe_allow_html=True,
     )

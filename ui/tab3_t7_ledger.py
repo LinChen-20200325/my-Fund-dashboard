@@ -1752,12 +1752,35 @@ def render_t7_section() -> None:
                                         del _cust_for_pid[_cpk]
                                         st.rerun()
 
+                        # v18.247: auto-enrich — 舊 D fund（v18.246 部署前加的）
+                        # 通常缺 metrics / moneydj_raw，會讓 _get_dy_t7 回 0。
+                        # 自動從 portfolio_funds 同 code 借（mutate _cust_for_pid 內 dict）
+                        _pf_by_code = {
+                            str(_pf.get("code", "")).strip().upper(): _pf
+                            for _pf in st.session_state.portfolio_funds
+                            if _pf.get("code")
+                        }
+                        for _cpk, _cf in _cust_for_pid.items():
+                            if _cf.get("metrics") and _cf.get("moneydj_raw"):
+                                continue
+                            _hit_pf = _pf_by_code.get(
+                                str(_cf.get("code", "")).strip().upper())
+                            if not _hit_pf:
+                                continue
+                            if not _cf.get("metrics") and _hit_pf.get("metrics"):
+                                _cf["metrics"] = dict(_hit_pf["metrics"])
+                            if (not _cf.get("moneydj_raw")
+                                    and _hit_pf.get("moneydj_raw")):
+                                _cf["moneydj_raw"] = dict(_hit_pf["moneydj_raw"])
+
                         # merge custom 進 lookup dicts 讓買方 multiselect 顯示
                         for _cpk, _cf in _cust_for_pid.items():
                             if _cpk not in _fund_by_pk:
                                 _fund_by_pk[_cpk] = _cf
                                 _name_lookup_t7[_cpk] = _cf["name"]
-                                _dy_lookup_t7[_cpk] = 0.0
+                                # v18.247: 不再 hard-code 0；走 _get_dy_t7
+                                # 抓 metrics / moneydj_raw，缺則 fallback 0
+                                _dy_lookup_t7[_cpk] = _get_dy_t7(_cf)
                             if _cpk not in _c_all_pks_pid:
                                 _c_all_pks_pid.append(_cpk)
 

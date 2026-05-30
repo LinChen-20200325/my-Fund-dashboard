@@ -246,6 +246,19 @@
 - [x] **驗證** smoke + portfolio_load test 共 **101 passed** 零回歸
 - [x] **後續觀察** `test_app_smoke.py` 的 expander 巢狀偵測只看 `st.expander` literal，未涵蓋 `st.status`／其它 expander-like API；下次踩到再補偵測（先記在 backlog）→ **v18.238 收尾**：`_EXPANDER_LIKE_ATTRS` 已擴成 `(expander, status, popover, dialog)` 四件套
 
+### v18.247 — 修：v18.246 還是 0 — `_dy_lookup_t7[_cpk] = 0.0` hard-code 寫死 + 舊 fund auto-enrich（2026-05-29）
+
+- [x] **症狀**（user 截圖）：v18.246 部署後 C 區複合轉換 ACTI71 預估年配息仍 NT$0（截圖第一張 row 2）；user 質疑「該資料先前有抓到，為何預估的會抓不到」
+- [x] **root cause 2 連環**：
+  1. `ui/tab3_t7_ledger.py:1760` D 模式 fund merge 進 `_dy_lookup_t7` 時 hard-code `= 0.0`，v18.246 把 metrics 帶上根本沒生效（一行寫死覆寫）
+  2. v18.246 部署前加進 `session_state.t7d_custom_funds[pid]` 的舊 D fund 沒 metrics，session 跨 rerun 持久 → 即使 cloud 已部署 v18.246 還是讀舊資料
+- [x] **修法**（雙修）：
+  1. line 1760 `_dy_lookup_t7[_cpk] = 0.0` → `_get_dy_t7(_cf)`（依 metrics + moneydj_raw 算 dy，缺則 fallback 0）
+  2. merge loop 前加 auto-enrich pass：對缺 metrics / moneydj_raw 的 D fund，從 `portfolio_funds` 內同 code（任何保單）的 fund 借（mutate）
+- [x] **意義**：v18.246 部署前加的舊 ACTI71 也自動修補，user 不需移除重加
+- [x] **解釋 user 第一個疑問**：截圖第二張表的「兩個月配息欄」實為 `預估月配息 (TWD)` + `預估月配股 (TWD)`（v18.172 拆的設計），現金型 vs 累積型基金二擇一非 0，**不是 bug**
+- [x] **驗證** AST OK；`pytest -m "not slow"` **665 passed**
+
 ### v18.246 — 修：D 模式 fund「預估年配息 = 0」— fund dict 缺 metrics + moneydj_raw（2026-05-29）
 
 - [x] **症狀**（user 截圖 + 反饋）：v18.245 複合轉換守恆通過，但 ACTI71 預估年配息 = NT$0；user 反饋「之前的保單也有這檔聯博」（保單 31611267318 ACTI71 累積已配 19.66%）
