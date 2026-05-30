@@ -1668,14 +1668,25 @@ def backtest_turning_points(
         pass
     out["t10y2y_series"] = s_t
 
-    # ── 抓 SPX 全歷史 ────────────────────────────────────────────
-    try:
-        spx = fetch_yf_close("^GSPC", range_="max", interval="1d")
-    except Exception as e:
-        out["note"] = f"^GSPC 抓取異常：{str(e)[:80]}"
-        return out
+    # ── 抓 SPX 全歷史（v18.251 多 range 備援，避免 max 失敗）──────
+    spx = None
+    _spx_tried: list[str] = []
+    for _rng in ("max", "30y", "20y", "10y", "5y"):
+        try:
+            _candidate = fetch_yf_close("^GSPC", range_=_rng, interval="1d")
+            _spx_tried.append(f"{_rng}={len(_candidate) if _candidate is not None else 0}")
+            if _candidate is not None and not _candidate.empty:
+                spx = _candidate if spx is None or len(_candidate) > len(spx) else spx
+                if spx is not None and len(spx) >= 1000:
+                    break
+        except Exception as e:
+            _spx_tried.append(f"{_rng}=ERR:{type(e).__name__}")
+            continue
     if spx is None or spx.empty or len(spx) < 1000:
-        out["note"] = "SPX history insufficient (< 1000 trading days)"
+        out["note"] = (
+            f"SPX history insufficient (< 1000 trading days)"
+            f" — Yahoo Chart 多 range 嘗試結果：{', '.join(_spx_tried)}"
+        )
         return out
     try:
         spx.index = spx.index.tz_localize(None)
